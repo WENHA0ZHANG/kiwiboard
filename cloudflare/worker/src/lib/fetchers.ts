@@ -92,13 +92,20 @@ async function fetchFredSeries(
   const csvPath =
     `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(seriesId)}&cosd=${cosd}`;
 
+  // The proxy (and FRED itself, when throttling) sometimes answers 200 with
+  // an HTML error page. Its `<link href="...Open+Sans:300,400...">` line
+  // splits on the comma into date=`<link href=...` / value=400, and since
+  // `<` sorts after any digit that garbage row became MAX(as_of) = "latest".
+  // So only accept lines that look like a real `YYYY-MM-DD,<number|.>` row.
   const parseCsv = (text: string): Array<{ date: string; value: string }> => {
-    const lines = text.trim().split(/\r?\n/);
     const out: Array<{ date: string; value: string }> = [];
-    for (let i = lines[0]?.toLowerCase().includes("date") ? 1 : 0; i < lines.length; i++) {
-      const parts = lines[i].split(",");
+    for (const line of text.trim().split(/\r?\n/)) {
+      const parts = line.split(",");
       if (parts.length < 2) continue;
-      out.push({ date: parts[0].trim(), value: parts[1].trim() });
+      const date = parts[0].trim();
+      const value = parts[1].trim();
+      if (!FRED_DATE_RE.test(date) || !FRED_VALUE_RE.test(value)) continue;
+      out.push({ date, value });
     }
     return out.reverse();   // CSV is oldest-first; callers expect newest-first
   };
@@ -108,7 +115,7 @@ async function fetchFredSeries(
     ALLORIGINS_BASE + encodeURIComponent(csvPath),
     "text/csv,text/plain",
   );
-  if (proxied && proxied.includes(",")) {
+  if (proxied) {
     const rows = parseCsv(proxied);
     if (rows.length) return rows;
   }
@@ -142,11 +149,14 @@ async function fetchFredSeries(
 
   // 3) Last resort: direct CSV (usually also 520, but try anyway).
   const direct = await _fetchText(csvPath, "text/csv");
-  if (direct && direct.includes(",")) {
+  if (direct) {
     return parseCsv(direct);
   }
   return [];
 }
+
+const FRED_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const FRED_VALUE_RE = /^(-?\d+(\.\d+)?|\.)$/;
 
 function toFredObservations(
   rows: Array<{ date: string; value: string }>,
@@ -157,7 +167,7 @@ function toFredObservations(
 ): Observation[] {
   const out: Observation[] = [];
   for (const row of rows) {
-    if (!row.date || row.value === "." || !row.value) continue;
+    if (!FRED_DATE_RE.test(row.date ?? "") || row.value === "." || !row.value) continue;
     const val = parseFloat(row.value);
     if (isNaN(val)) continue;
     out.push({
