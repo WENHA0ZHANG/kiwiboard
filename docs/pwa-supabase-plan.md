@@ -252,10 +252,34 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
   - Watchlist 里抓不到价格的旧行，代码旁边会显示 "no data"，用每行末尾的 × 删除。
 - **部署顺序**：先部署 Worker，再部署 Pages。新页面依赖新接口，反过来的话添加功能会暂时不能用。
 
+### 第五轮：图表、手机细节和 D1 读取超限（2026-11-26 已部署：Worker `0261a32a`，Pages `5e855b90`）
+
+**D1 超限（当天线上数据接口全部 500）**
+- 2026-11-26 过去 24 小时读了 604 万行，超过免费版每天 500 万行。超限后所有读数据的查询都报 `D1_ERROR … daily row read limit`（code 7500），Worker 返回 1101，页面上指标、档位、Watchlist 都加载不出来，直到 UTC 0 点（新加坡早上 8 点）重置。
+- 原因：两条查询每次都扫整张 `observations`（约 4,600 行）。
+  - `getLatestObservations`（`GROUP BY indicator_id`），一天约 900 次，417 万行。
+  - `getLastUpdateTime` 的 `MAX(inserted_at)`，一天约 350 次，162 万行。
+- 修复：
+  - `getLatestObservations` 改成递归 CTE，沿主键 (indicator_id, as_of) 逐个找指标，每个指标只做几次索引查找。本地用 seed 数据对比，结果和旧查询完全一样（17 行），全表扫描步数从 3,527 降到 0。
+  - `schema.sql` 新增 `idx_observations_inserted_at`，让 `MAX(inserted_at)` 只读 1 行。**这个索引还要在线上建一次**，必须等额度重置以后（建索引本身要读整张表）：
+    `npx wrangler d1 execute poor-trader-db --remote --command "CREATE INDEX IF NOT EXISTS idx_observations_inserted_at ON observations(inserted_at);"`
+  - 预计每天读取约 30 万行（没建索引时约 190 万行，也在额度内）。
+- 查看用量：`npx wrangler d1 info poor-trader-db`；找最耗读取的查询：`npx wrangler d1 insights poor-trader-db --timePeriod 1d --sort-by reads --sort-direction DESC`。
+
+**页面**
+- 指标走势图：Top / Bottom / Latest 标签加了底板，数值简化（"Latest 15"，不再写 "15.00 0-100"），并优先放在曲线不经过的位置。
+- 电脑端标签和手机一致：Market · Watchlist · Global · News · Signals（页面大标题不变）。
+- 电脑端 Watchlist 输入框从 240px 加宽到 400px。
+- 代码/公司名候选列表改成浮在表格上方（不再把表格往下挤），打开时卡片暂时不裁剪。
+- 手机顶部一行：kiwiboard、档位小标签（"Buy +4.7"）、按钮。放不下时只显示分数，再放不下就隐藏（`_fitRegimePill`）。
+- 手机地图按地图比例显示（`aspect-ratio: 1.75`，约 194px 高，原来 290px），标题改成两行：标题 + Reload / 时间 + 缩放按钮。
+- Watchlist 图表：拖动下方滑块时，以前只有成交量跟着变（`echarts.connect` 按 dataZoom 的 id 配对，滑块只在成交量图里）。两张图现在用同样的 id（`wl-zoom-inside`、`wl-zoom-slider`），价格图里放了一个隐藏的滑块，拖动和双指缩放都会两边同步。电脑端以前也有这个问题。
+
 ## 平台限制
 
 - **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
 - **Supabase free**：项目 7 天没有活动会被暂停。可以让 Worker cron 每天对 Supabase 做一次轻量查询，保持活跃。
+- **D1 Free**：每天最多读 500 万行、写 10 万行，UTC 0 点重置。超了以后所有读数据的查询都会失败，直到重置或升级 Workers Paid（$5/月）。D1 按扫描的行数计费，新查询要避免全表扫描（见第五轮）。
 - **Workers Free**：每次调用的 CPU 时间上限是 10ms。档位推送只需要算 1 次 + 发 N 条，用户少的时候没问题。订阅数到几百以后，改用 Queues 分批发送，或者升级到付费计划。
 - **Google 登录页**：上面显示的是 `<ref>.supabase.co`。要换成自己的域名，需要 Supabase 的付费 custom domain。
 - **密钥**：service_role key 只能放在 Worker secret 里，绝不能出现在 `index.html`。DB 密码只有 CLI 或 psql 才会用到，网站本身用不到。
@@ -263,10 +287,12 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 ## 回滚
 
 - **代码**：
+  - 第五轮之前：`git checkout 02b91c3 -- cloudflare/pages/index.html cloudflare/worker/src/lib/db.ts cloudflare/schema.sql`
   - 第三轮之前：`git checkout backup/pre-phone-pass-2026-11-26 -- cloudflare/pages/index.html`
   - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
   - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
 - **线上版本**：
+  - 第五轮之前：Pages `3e8e6069`，Worker `1a6dad14`。页面和 Worker 互不依赖，可以分开回滚；退 Worker 会让 D1 读取量回到超限的水平。
   - 第四轮之前：Pages `ec183e75`，Worker `6d27fc5c`。回滚时先退 Pages，再退 Worker。
   - 第三轮之前：Pages `02c9f128`，Worker `6d27fc5c`。第三轮只改了 Pages，回滚只需要把 Pages 退回 `02c9f128`。
   - 第二轮之前：Pages `b982715b`，Worker `5e16764e`（`npx wrangler rollback 5e16764e-b6ab-4ea7-8a1b-3a9fa8b9e436`）。

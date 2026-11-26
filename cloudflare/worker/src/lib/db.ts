@@ -4,17 +4,24 @@ import type { Observation } from "./types";
 export async function getLatestObservations(
   db: D1Database,
 ): Promise<Record<string, Observation>> {
+  // D1 bills every row a query reads. The old `GROUP BY indicator_id` read
+  // the whole table (thousands of rows) on every call, which pushed the
+  // free plan past its 5M rows/day on 2026-11-26. This walks the distinct
+  // indicator ids through the (indicator_id, as_of) primary key instead:
+  // a few index seeks per indicator, same rows out.
   const rows = await db
     .prepare(
-      `SELECT o.*
-       FROM observations o
-       JOIN (
-         SELECT indicator_id, MAX(as_of) AS max_as_of
-         FROM observations
-         GROUP BY indicator_id
-       ) latest
-       ON o.indicator_id = latest.indicator_id
-       AND o.as_of = latest.max_as_of`,
+      `WITH RECURSIVE ids(id) AS (
+         SELECT MIN(indicator_id) FROM observations
+         UNION ALL
+         SELECT (SELECT MIN(indicator_id) FROM observations WHERE indicator_id > ids.id)
+         FROM ids WHERE ids.id IS NOT NULL
+       )
+       SELECT o.*
+       FROM ids
+       JOIN observations o
+         ON o.indicator_id = ids.id
+        AND o.as_of = (SELECT MAX(as_of) FROM observations WHERE indicator_id = ids.id)`,
     )
     .all<Observation>();
 
@@ -101,6 +108,8 @@ export async function getLastUpdateTime(db: D1Database): Promise<string | null> 
   //   • the cron heartbeat (see setLastCronRun below — written on every
   //     scheduled run so the timestamp keeps moving even when no source
   //     produced new data on that run).
+  // One index seek with idx_observations_inserted_at (schema.sql); without
+  // that index this reads the whole table.
   const obs = await db
     .prepare(`SELECT MAX(inserted_at) AS t FROM observations`)
     .first<{ t: string | null }>();

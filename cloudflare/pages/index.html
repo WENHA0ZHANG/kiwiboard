@@ -248,7 +248,6 @@
       .icon-btn { padding: 0; width: 38px; }
       .icon-btn:hover, .hdr-btn:hover { background: var(--surface-hover); color: var(--text-strong); }
       .install-wrap { display: inline-flex; }
-      .tab-btn .tl-short { display: none; }
       .theme-toggle .i-sun { display: none; }
       :root[data-theme="dark"] .theme-toggle .i-sun { display: block; }
       :root[data-theme="dark"] .theme-toggle .i-moon { display: none; }
@@ -832,18 +831,23 @@
       .wl-focus-item .wl-chg .wl-volr { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
 
       .wl-table-card .wl-add-row { display: flex; gap: 8px; padding: 2px 22px 0; align-items: center; flex-wrap: wrap; }
-      .wl-table-card .wl-add-row input { flex: 0 1 240px; }
+      .wl-table-card .wl-add-row input { flex: 0 1 400px; }
       .wl-table-card .wl-add-status { font-size: 13px; color: var(--muted); margin-left: auto; }
       .wl-table-card .wl-add-status.err { color: var(--bear); }
       .wl-table-card .wl-sym-cell small.wl-nodata { color: var(--warning); }
 
-      /* Ticker / company type-ahead: a full-width list under the add row
-         (in the flow, so a card's overflow never clips it). */
+      /* Ticker / company type-ahead: a list that floats over the rows under
+         the add box (JS lines it up with the input). The card lets it hang
+         past its edge while it is open. */
+      .wl-add-row, .stock-controls { position: relative; }
       .sym-suggest {
-        flex: 1 1 100%; order: 10; margin-top: 2px; max-height: 340px; overflow-y: auto;
+        position: absolute; z-index: 30; top: 100%; left: 0; width: 100%;
+        max-height: 340px; overflow-y: auto; overscroll-behavior: contain;
         border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg);
+        box-shadow: var(--shadow-md);
       }
       .sym-suggest[hidden] { display: none; }
+      .card:has(.sym-suggest:not([hidden])) { overflow: visible; }
       .sym-hint { padding: 9px 12px; font-size: 13px; line-height: 1.4; color: var(--muted); }
       .sym-hint.err { color: var(--bear); }
       .sym-hint + .sym-opt { border-top: 1px solid var(--border); }
@@ -1140,11 +1144,11 @@
           padding-bottom: calc(92px + env(safe-area-inset-bottom)); /* clears the tab bar */
         }
 
-        /* Header: brand + actions; the regime pill / install link below. */
+        /* Header: one row: brand, the regime pill, then the buttons. */
         .hdr-inner {
-          display: grid; grid-template-columns: minmax(0, 1fr) auto;
-          grid-template-areas: "brand actions" "meta meta";
-          align-items: center; gap: 0 10px; min-height: 0;
+          display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+          grid-template-areas: "brand meta actions";
+          align-items: center; gap: 0 8px; min-height: 0;
           padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
         }
         .brand { grid-area: brand; gap: 10px; min-width: 0; }
@@ -1152,16 +1156,17 @@
         .brand-name { font-size: 18px; overflow: hidden; text-overflow: ellipsis; }
         .hdr-right { display: contents; }
         .hdr-actions { grid-area: actions; gap: 8px; }
-        .hdr-meta { grid-area: meta; gap: 10px; flex-wrap: wrap; }
-        .hdr-meta > * { margin-top: 10px; }
+        /* Clipped, so a pill that doesn't fit can't push the buttons off
+           screen; _fitRegimePill() then shortens it. */
+        .hdr-meta { grid-area: meta; gap: 10px; min-width: 0; overflow: hidden; }
         .live-status { display: none; }
         .icon-btn { width: 36px; height: 36px; min-width: 36px; }
         .auth-signin { height: 36px; padding: 0 14px; font-size: 14px; }
         .auth-avatar-btn { width: 36px; height: 36px; }
 
         .regime-pill.ready {
-          display: inline-flex; align-items: baseline; gap: 7px;
-          padding: 5px 12px; border-radius: 999px;
+          display: inline-flex; align-items: baseline; gap: 6px;
+          padding: 5px 9px; border-radius: 999px;
           border: 1px solid var(--border); background: var(--surface); color: var(--text-strong);
           font-size: 13.5px; font-weight: 650; white-space: nowrap; text-decoration: none;
           -webkit-tap-highlight-color: transparent;
@@ -1170,6 +1175,13 @@
         .regime-pill:is(.regime-strong-buy, .regime-buy, .regime-cautious-buy) .rp-label { color: var(--bull); }
         .regime-pill:is(.regime-caution, .regime-risk, .regime-strong-risk) .rp-label { color: var(--bear); }
         .regime-pill.regime-neutral .rp-label { color: var(--muted); }
+        /* Too little room for "Cautious Buy +3.2": the score alone, in the
+           band's colour; on the narrowest screens no pill at all. */
+        .regime-pill.compact { padding-left: 8px; padding-right: 8px; }
+        .regime-pill.compact .rp-label { display: none; }
+        .regime-pill.compact:is(.regime-strong-buy, .regime-buy, .regime-cautious-buy) .rp-score { color: var(--bull); }
+        .regime-pill.compact:is(.regime-caution, .regime-risk, .regime-strong-risk) .rp-score { color: var(--bear); }
+        .regime-pill.ready.no-room { display: none; }
         /* The Overview page already opens with the full regime card. */
         body:has(.page.active[data-page="prediction"]) .regime-pill { display: none; }
 
@@ -1190,8 +1202,6 @@
         }
         .tab-btn.active { font-weight: 600; }
         .tab-label::after { content: none; }
-        .tab-btn .tl-full { display: none; }
-        .tab-btn .tl-short { display: inline; }
         .tab-btn .tab-icon { display: block; width: 23px; height: 23px; }
         .tab-btn.active .tab-icon { color: var(--brand-ink); }
         .tab-btn::after { top: 0; bottom: auto; left: 30%; right: 30%; height: 2px; border-radius: 0 0 2px 2px; }
@@ -1280,8 +1290,17 @@
         .market-news-list { padding: 0 16px 14px; }
         .mn-empty { padding: 6px 16px 16px; }
 
-        /* Charts: shorter on phones. */
-        #world-map { height: 290px; }
+        /* Charts: shorter on phones. The world map is about twice as wide
+           as it is tall, so a fixed height left empty bands above and
+           below it. */
+        #world-map { height: auto; aspect-ratio: 1.75; }
+        /* Global map heading in two rows: title + Reload, then the time
+           and the zoom buttons. */
+        .world-card > h2 { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; }
+        .world-card > h2 .h2-actions { display: contents; }
+        .world-card > h2 .h2-actions > a { order: 1; justify-self: end; }
+        .world-card > h2 #world-asof { order: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .world-card > h2 .map-toolbar { order: 3; justify-self: end; }
         .world-map-wrap { padding: 2px 10px 4px; }
         .world-meta { padding: 10px 16px 16px; }
         .index-detail-chart-wrap { padding: 4px 6px 6px; }
@@ -1478,10 +1497,10 @@
         </a>
 
         <nav class="tabs" id="tab-nav" role="tablist" aria-label="Dashboard sections">
-          <!-- .tab-icon and the short .tl-short names only show on phones (bottom tab bar). -->
+          <!-- Same short names on every screen; .tab-icon only shows on phones (bottom tab bar). -->
           <button class="tab-btn active" data-tab="prediction" role="tab" aria-selected="true">
             <svg class="tab-icon ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 16.5a7.5 7.5 0 1 1 15 0"/><path d="M12 16.5l3.6-4.6"/><circle cx="12" cy="16.5" r="1.1"/></svg>
-            <span class="tab-label" data-text="Overview"><span class="tl-full">Overview</span><span class="tl-short">Market</span></span>
+            <span class="tab-label" data-text="Market"><span>Market</span></span>
           </button>
           <button class="tab-btn" data-tab="watchlist" role="tab" aria-selected="false">
             <svg class="tab-icon ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16.4l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/></svg>
@@ -1489,11 +1508,11 @@
           </button>
           <button class="tab-btn" data-tab="global" role="tab" aria-selected="false">
             <svg class="tab-icon ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5s1.2-6.2 3.6-8.5z"/></svg>
-            <span class="tab-label" data-text="Global Map"><span class="tl-full">Global Map</span><span class="tl-short">Global</span></span>
+            <span class="tab-label" data-text="Global"><span>Global</span></span>
           </button>
           <button class="tab-btn" data-tab="market" role="tab" aria-selected="false">
             <svg class="tab-icon ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M5 15l4.3-4.4 3.3 3 6.4-7"/><path d="M15.4 6.6H19v3.6"/></svg>
-            <span class="tab-label" data-text="Markets &amp; News"><span class="tl-full">Markets &amp; News</span><span class="tl-short">News</span></span>
+            <span class="tab-label" data-text="News"><span>News</span></span>
           </button>
           <button class="tab-btn" data-tab="signals" role="tab" aria-selected="false">
             <svg class="tab-icon ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12h4l2.5-6 4 12 2.5-6h4"/></svg>
@@ -1743,7 +1762,7 @@
         </div>
       </div>
       <div class="grid">
-        <div class="card" style="grid-column: 1 / -1;">
+        <div class="card world-card" style="grid-column: 1 / -1;">
           <h2>
             Global Market Map
             <span id="world-asof" class="h2-note"></span>
@@ -2295,7 +2314,7 @@
           return unit === "%" ? `${formatted}%` : `${formatted} ${unit}`;
         }
 
-        // Threshold labels on phone-width charts: "Top 75", not "Top 75.00 0-100".
+        // Labels drawn on charts: "Top 75", not "Top 75.00 0-100".
         function _formatChartValueShort(value, unit) {
           if (value === null || value === undefined) return "—";
           const n = Number(value);
@@ -2356,148 +2375,102 @@
           },
         };
 
+        // Labels on the indicator chart sit on a plate in the card colour, so
+        // a line running through them can't make them unreadable. Values are
+        // short ("Top 75", "Latest 15"): the axis already carries the scale.
         const thresholdLabelPlugin = {
           id: "thresholdLabels",
           afterDatasetsDraw(chart, args, opts) {
             const { ctx, chartArea, scales } = chart;
-            if (!chartArea || !scales || !scales.y) return;
+            if (!chartArea || !scales || !scales.y || !opts) return;
+            const T = _tc();
             const yScale = scales.y;
-            const xRight = chartArea.right - 6;
-            const _fmtV = chart.width < 440 ? _formatChartValueShort : _formatChartValue;
+            const has = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
+            const fmt = (v) => _formatChartValueShort(v, opts.unit);
+            const PX = 5, PY = 3, TH = 12;           // plate padding, text height
+            const STEP = TH + 2 * PY + 2;            // one plate plus a gap
+            const OFF = TH / 2 + PY + 3;             // centre offset that clears a line
             const boxes = [];
 
             ctx.save();
-            ctx.font = "500 12px " + _tc().font;
+            ctx.font = "600 12px " + T.font;
             ctx.textBaseline = "middle";
 
-            function _boxForText(x, y, text, align) {
+            const boxFor = (x, y, text, align) => {
               const w = ctx.measureText(text).width;
-              const h = 12;
               const x1 = align === "right" ? x - w : x;
-              return { x1, y1: y - h / 2, x2: x1 + w, y2: y + h / 2 };
-            }
-
-            function _intersects(a, b) {
-              return !(a.x2 < b.x1 || a.x1 > b.x2 || a.y2 < b.y1 || a.y1 > b.y2);
-            }
-
-            function _fits(box) {
-              return box.y1 >= chartArea.top && box.y2 <= chartArea.bottom;
-            }
-
-            function _placeLabel(text, yValue, color, alignRight = true) {
-              const yLine = yScale.getPixelForValue(yValue);
-              if (yLine < chartArea.top || yLine > chartArea.bottom) return;
-              const x = xRight;
-              const align = alignRight ? "right" : "left";
-              const aboveY = yLine - 10;
-              const belowY = yLine + 10;
-
-              let y = aboveY;
-              let box = _boxForText(x, y, text, align);
-              if (!_fits(box)) {
-                y = belowY;
-                box = _boxForText(x, y, text, align);
+              return { x1: x1 - PX, y1: y - TH / 2 - PY, x2: x1 + w + PX, y2: y + TH / 2 + PY };
+            };
+            const hits = (a, b) => !(a.x2 < b.x1 || a.x1 > b.x2 || a.y2 < b.y1 || a.y1 > b.y2);
+            const fits = (b) => b.y1 >= chartArea.top && b.y2 <= chartArea.bottom;
+            // The data line, as straight segments between its points (sorted by x).
+            const pts = ((chart.getDatasetMeta(0) || {}).data || [])
+              .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+            const crossesLine = (b) => {
+              let lo = 0, hi = pts.length - 1;          // first point at or right of b.x1
+              while (lo < hi) { const mid = (lo + hi) >> 1; if (pts[mid].x < b.x1) lo = mid + 1; else hi = mid; }
+              for (let i = Math.max(1, lo); i < pts.length && pts[i - 1].x <= b.x2; i += 1) {
+                const p = pts[i - 1], q = pts[i];
+                const yAt = (x) => (q.x === p.x ? p.y : p.y + (q.y - p.y) * (x - p.x) / (q.x - p.x));
+                const ya = yAt(Math.max(p.x, b.x1)), yb = yAt(Math.min(q.x, b.x2));
+                if (Math.max(ya, yb) >= b.y1 && Math.min(ya, yb) <= b.y2) return true;
               }
-
-              for (const b of boxes) {
-                if (_intersects(box, b)) {
-                  const altY = y === aboveY ? belowY : aboveY;
-                  const altBox = _boxForText(x, altY, text, align);
-                  if (_fits(altBox) && !_intersects(altBox, b)) {
-                    y = altY;
-                    box = altBox;
-                  } else {
-                    const shiftedY = altY + 12;
-                    const shiftedBox = _boxForText(x, shiftedY, text, align);
-                    if (_fits(shiftedBox) && !_intersects(shiftedBox, b)) {
-                      y = shiftedY;
-                      box = shiftedBox;
-                    }
-                  }
-                }
-              }
-
+              return false;
+            };
+            // Pick a row for a label: the first of the first `clearOf` rows
+            // that keeps off the data line, else the first clear of earlier
+            // labels, else the first that fits. The plate keeps it readable
+            // either way.
+            const place = (text, x, ys, align, color, clearOf = ys.length) => {
+              const ok = ys.filter((y) => fits(boxFor(x, y, text, align)));
+              if (!ok.length) return;
+              const free = (y) => !boxes.some((b) => hits(boxFor(x, y, text, align), b));
+              const y = ok.find((yy) => ys.indexOf(yy) < clearOf && free(yy) && !crossesLine(boxFor(x, yy, text, align)))
+                ?? ok.find(free) ?? ok[0];
+              const b = boxFor(x, y, text, align);
+              ctx.fillStyle = _alpha(T.bg, 0.9);
+              ctx.beginPath();
+              if (ctx.roundRect) ctx.roundRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1, 4);
+              else ctx.rect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
+              ctx.fill();
               ctx.fillStyle = color;
               ctx.textAlign = align;
               ctx.fillText(text, x, y);
-              boxes.push(box);
+              boxes.push(b);
+            };
+            // Threshold labels: just above their line at the right edge
+            // (below it when there's no room), stepping away from others.
+            const lineLabel = (text, value, color) => {
+              const yLine = yScale.getPixelForValue(Number(value));
+              if (!(yLine >= chartArea.top && yLine <= chartArea.bottom)) return;
+              const up = yLine - OFF, down = yLine + OFF;
+              place(text, chartArea.right - 6, [up, down, up - STEP, down + STEP], "right", color, 2);
+            };
+
+            if (has(opts.top)) lineLabel(`Top ${fmt(opts.top)}`, opts.top, T.bear);
+            if (has(opts.bottom)) lineLabel(`Bottom ${fmt(opts.bottom)}`, opts.bottom, T.bull);
+            if (Array.isArray(opts.topZone) && opts.topZone.length === 2) {
+              const hi = Math.max(...opts.topZone), lo = Math.min(...opts.topZone);
+              lineLabel(`Top zone ${fmt(lo)} – ${fmt(hi)}`, hi, T.bear);
+            }
+            if (Array.isArray(opts.bottomZone) && opts.bottomZone.length === 2) {
+              const hi = Math.max(...opts.bottomZone), lo = Math.min(...opts.bottomZone);
+              lineLabel(`Bottom zone ${fmt(lo)} – ${fmt(hi)}`, lo, T.bull);
             }
 
-            if (opts && opts.top !== null && opts.top !== undefined && !Number.isNaN(opts.top)) {
-              _placeLabel(
-                `Top ${_fmtV(opts.top, opts.unit)}`,
-                opts.top,
-                _tc().bear
-              );
-            }
-
-            if (opts && opts.bottom !== null && opts.bottom !== undefined && !Number.isNaN(opts.bottom)) {
-              _placeLabel(
-                `Bottom ${_fmtV(opts.bottom, opts.unit)}`,
-                opts.bottom,
-                _tc().bull
-              );
-            }
-
-            // Annotate shaded zones with a label at the upper edge.
-            if (opts && Array.isArray(opts.topZone) && opts.topZone.length === 2) {
-              const hi = Math.max(opts.topZone[0], opts.topZone[1]);
-              const lo = Math.min(opts.topZone[0], opts.topZone[1]);
-              _placeLabel(
-                `Top zone ${_fmtV(lo, opts.unit)} – ${_fmtV(hi, opts.unit)}`,
-                hi,
-                _tc().bear
-              );
-            }
-            if (opts && Array.isArray(opts.bottomZone) && opts.bottomZone.length === 2) {
-              const hi = Math.max(opts.bottomZone[0], opts.bottomZone[1]);
-              const lo = Math.min(opts.bottomZone[0], opts.bottomZone[1]);
-              _placeLabel(
-                `Bottom zone ${_fmtV(lo, opts.unit)} – ${_fmtV(hi, opts.unit)}`,
-                lo,
-                _tc().bull
-              );
-            }
-
-            const meta = chart.getDatasetMeta(0);
-            if (meta && meta.data && meta.data.length) {
-              const lastPoint = meta.data[meta.data.length - 1];
-              if (lastPoint && opts && opts.latest !== null && opts.latest !== undefined && !Number.isNaN(opts.latest)) {
-                let x = lastPoint.x + 6;
-                let y = lastPoint.y;
-                let align = "left";
-                if (x > chartArea.right - 70) {
-                  x = lastPoint.x - 6;
-                  align = "right";
-                }
-                let text = `Latest ${_fmtV(opts.latest, opts.unit)}`;
-                let box = _boxForText(x, y, text, align);
-                if (!_fits(box)) {
-                  y = lastPoint.y - 10;
-                  box = _boxForText(x, y, text, align);
-                }
-                for (const b of boxes) {
-                  if (_intersects(box, b)) {
-                    const altY = y + 12;
-                    const altBox = _boxForText(x, altY, text, align);
-                    if (_fits(altBox) && !_intersects(altBox, b)) {
-                      y = altY;
-                      box = altBox;
-                    } else {
-                      const altY2 = y - 12;
-                      const altBox2 = _boxForText(x, altY2, text, align);
-                      if (_fits(altBox2) && !_intersects(altBox2, b)) {
-                        y = altY2;
-                        box = altBox2;
-                      }
-                    }
-                  }
-                }
-                ctx.fillStyle = _tc().text;
-                ctx.textAlign = align;
-                ctx.fillText(text, x, y);
-              }
+            // Latest value: right-aligned on the last point, on the nearest
+            // row above or below it that keeps off the line. Only the two
+            // nearest rows each side may be skipped for that; any further
+            // and the label would drift away from the point it names.
+            const last = pts[pts.length - 1];
+            if (last && has(opts.latest)) {
+              const text = `Latest ${fmt(opts.latest)}`;
+              const w = ctx.measureText(text).width;
+              let x = last.x - PX - 2, align = "right";
+              if (x - w - PX < chartArea.left) { x = last.x + PX + 4; align = "left"; }
+              const ys = [];
+              for (let k = 0; k < 4; k += 1) ys.push(last.y - OFF - k * STEP, last.y + OFF + k * STEP);
+              place(text, x, ys, align, T.text, 4);
             }
 
             ctx.restore();
@@ -2945,6 +2918,21 @@
             input.setAttribute("aria-expanded", "false");
             input.removeAttribute("aria-activedescendant");
           };
+          // The list floats just under the input, as wide as the input plus
+          // the Add button (at least 360px when the row has room).
+          const position = () => {
+            const host = list.parentElement;
+            if (!host || list.hidden) return;
+            const btn = input.nextElementSibling;
+            const left = input.offsetLeft;
+            const sameRow = btn && btn.tagName === "BUTTON" && Math.abs(btn.offsetTop - input.offsetTop) < 8;
+            const right = sameRow ? btn.offsetLeft + btn.offsetWidth : left + input.offsetWidth;
+            const room = host.clientWidth - 2 * left;
+            list.style.left = left + "px";
+            list.style.top = (input.offsetTop + input.offsetHeight + 4) + "px";
+            list.style.width = Math.max(0, Math.min(room, Math.max(right - left, 360))) + "px";
+          };
+          window.addEventListener("resize", position);
           const render = (arr, hint, isErr) => {
             items = arr; active = -1;
             if (!arr.length && !hint) { close(); return; }
@@ -2953,6 +2941,7 @@
                 `<b>${_escHtml(r.symbol)}</b><span class="sym-name">${_escHtml(r.name || "")}</span>` +
                 `<span class="sym-ex">${_escHtml(r.exchange || "")}</span></div>`).join("");
             list.hidden = false;
+            position();
             input.setAttribute("aria-expanded", "true");
           };
           const highlight = (i) => {
@@ -3804,9 +3793,17 @@
             }
             if (asofEl) {
               const at = data.as_of_utc ? new Date(data.as_of_utc) : null;
-              asofEl.textContent = at
-                ? `as of ${at.toLocaleString()}`
-                : (data.refreshing ? "Refreshing..." : "");
+              if (at && !Number.isNaN(at.getTime())) {
+                // Phones get the short form ("8:37 PM", or "25 Nov, 8:37 PM"
+                // when it isn't today) so it fits beside the zoom buttons.
+                const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                const short = at.toDateString() === new Date().toDateString()
+                  ? time : `${at.toLocaleDateString([], { day: "numeric", month: "short" })}, ${time}`;
+                asofEl.innerHTML = `as of <span class="d-only">${_escHtml(at.toLocaleString())}</span>` +
+                  `<span class="m-only">${_escHtml(short)}</span>`;
+              } else {
+                asofEl.textContent = data.refreshing ? "Refreshing..." : "";
+              }
             }
             if (noteEl) {
               const real = data.real_count ?? 0;
@@ -5155,8 +5152,13 @@
               },
             }),
             grid: narrow ? { left: 44, right: 12, top: 48, bottom: 8 } : { left: 55, right: 52, top: 30, bottom: 28 },
+            // echarts.connect() passes zoom changes between the two panes by
+            // dataZoom id, so this pane carries a hidden twin of the volume
+            // pane's slider; without it, dragging the slider only moved the
+            // volume bars.
             dataZoom: [
-              { type: "inside", xAxisIndex: [0], filterMode: "filter", moveOnMouseMove: !touch },
+              { id: "wl-zoom-inside", type: "inside", xAxisIndex: [0], filterMode: "filter", moveOnMouseMove: !touch },
+              { id: "wl-zoom-slider", type: "slider", show: false, xAxisIndex: [0], filterMode: "filter" },
             ],
             xAxis: {
               type: "category", data: dates,
@@ -5216,8 +5218,8 @@
             }),
             grid: narrow ? { left: 44, right: 12, top: 12, bottom: 70 } : { left: 55, right: 52, top: 6, bottom: 40 },
             dataZoom: [
-              { type: "inside", xAxisIndex: [0], filterMode: "filter", moveOnMouseMove: !touch },
-              { type: "slider", xAxisIndex: [0], height: narrow ? 32 : 16, bottom: narrow ? 4 : 6,
+              { id: "wl-zoom-inside", type: "inside", xAxisIndex: [0], filterMode: "filter", moveOnMouseMove: !touch },
+              { id: "wl-zoom-slider", type: "slider", xAxisIndex: [0], height: narrow ? 32 : 16, bottom: narrow ? 4 : 6,
                 brushSelect: false, borderColor: T.border,
                 fillerColor: _alpha(T.brand, 0.18),
                 handleStyle: { color: T.brandInk, borderColor: T.brandInk },
@@ -5809,12 +5811,40 @@
                 pill.className = `regime-pill ready ${r.css_class}`;
                 pill.querySelector(".rp-label").textContent = r.label;
                 pill.querySelector(".rp-score").textContent = scoreStr;
+                pill.setAttribute("aria-label", `Market regime: ${r.label} ${scoreStr}`);
+                _fitRegimePill();
               }
             }
           } catch (e) {
             console.error("loadSignalsAndRegime:", e);
           }
         }
+
+        // Phone header: the regime pill shares the top row with the brand and
+        // the buttons. When "Cautious Buy +3.2" doesn't fit, the score shows
+        // alone; when even that doesn't fit, the pill steps aside.
+        function _fitRegimePill() {
+          const pill = document.getElementById("regime-pill");
+          const meta = pill && pill.parentElement;
+          if (!pill || !meta) return;
+          pill.classList.remove("compact", "no-room");
+          if (!_isPhone() || !pill.offsetWidth) return;
+          const over = () => pill.getBoundingClientRect().right > meta.getBoundingClientRect().right + 0.5;
+          if (over()) pill.classList.add("compact");
+          if (over()) pill.classList.add("no-room");
+        }
+        (() => {
+          const meta = document.querySelector(".hdr-meta");
+          const actions = document.querySelector(".hdr-actions");
+          window.addEventListener("resize", _fitRegimePill);
+          // The pill appearing (tab switch) and the buttons changing width
+          // (Sign in → avatar, install icon) both resize these boxes.
+          if (typeof ResizeObserver !== "undefined" && meta && actions) {
+            const ro = new ResizeObserver(() => _fitRegimePill());
+            ro.observe(meta);
+            ro.observe(actions);
+          }
+        })();
         </script>
       </div>
 

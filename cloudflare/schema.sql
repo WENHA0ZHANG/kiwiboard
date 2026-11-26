@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS observations (
   PRIMARY KEY (indicator_id, as_of)
 );
 
+-- "Last updated" reads MAX(inserted_at) on most page loads; without this
+-- index every call scans the whole table (D1 bills each row read).
+CREATE INDEX IF NOT EXISTS idx_observations_inserted_at ON observations(inserted_at);
+
 CREATE TABLE IF NOT EXISTS market_overview (
   symbol TEXT PRIMARY KEY,
   name TEXT NOT NULL,
