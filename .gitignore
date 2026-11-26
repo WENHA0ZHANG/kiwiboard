@@ -49,3 +49,32 @@ trader.zip
 dist/
 build/
 *.tsbuildinfo
+
+# ── More credentials (this repository is public) ──────────────────────────────
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+client_secret*.json
+*credentials*.json
+*service-account*.json
+google-oauth-client*.json
+.npmrc
+.pypirc
+*.secret
+*.secrets
+
+# Supabase CLI local state (project ref, pooler URL, temp files)
+supabase/.temp/
+supabase/.branches/
+
+# ── Local tools and generated files ───────────────────────────────────────────
+.claude/
+*.egg-info/
+*.log
+logs/
+*.sqlite3
+*.sqlite
+._*
+desktop.ini

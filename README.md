@@ -1,6 +1,7 @@
-# Poor Trader Dashboard
+# kiwiboard
 
-**A decision-support dashboard for timing market risk and opportunity.**
+**A fresh cut of the market.** A decision-support dashboard for timing market
+risk and opportunity (formerly *Poor Trader Dashboard*).
 
 Poor Trader Dashboard is an open, free-to-use research assistant for
 investors and traders. It combines multiple high-correlation macro,
@@ -344,3 +345,14 @@ This is a research / hobby project. The Poor2Rich score and bull/bear
 alerts are *early-warning gauges* of sentiment and credit temperature —
 **not** trading orders. Always combine with position sizing and risk
 controls.
+
+## License
+
+kiwiboard is source-available under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). You may use, copy, modify
+and share it for noncommercial purposes such as personal use, study,
+research and hobby projects. Commercial use is not permitted; contact the
+author for a commercial license.
+
+Versions published earlier in the `poor-trader-dashboard` repository were
+released under GPL-3.0 and remain available under those terms.
