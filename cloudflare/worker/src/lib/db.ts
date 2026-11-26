@@ -150,7 +150,7 @@ export async function getMarketOverviewRows(
     const placeholders = symbols.map(() => "?").join(",");
     const rows = await db
       .prepare(
-        `SELECT symbol, name, as_of, close, chg_1w_pct, chg_1m_pct, chg_3m_pct, chg_1y_pct, source_url
+        `SELECT symbol, name, as_of, close, chg_1w_pct, chg_1m_pct, chg_3m_pct, chg_1y_pct, source_url, updated_at
          FROM market_overview WHERE lower(symbol) IN (${placeholders})`,
       )
       .bind(...symbols.map((s) => s.toLowerCase()))

@@ -1,21 +1,47 @@
 import { fetchYahooQuote } from "./yahoo";
 
-// ── Ticker / company-name lookup for the "add a stock" boxes ────────────────
+// ── Ticker / company-name lookup for the "add" boxes ───────────────────────
 // People type "google" or "apple" as often as "GOOG". Yahoo Finance's public
-// search endpoint maps both to listings; only stocks and ETFs are offered,
-// US listings (no ".XX" exchange suffix) first. Results are kept in memory
-// per isolate: the Cache API is a no-op on workers.dev.
+// search endpoint maps both to listings. Two kinds of lookup:
+//   stocks — stocks and ETFs, US listings (no ".XX" exchange suffix) first;
+//   assets — crypto priced in US dollars (ETH-USD) and futures (GC=F), for
+//            the Futures & Crypto table.
+// Results are kept in memory per isolate: the Cache API is a no-op on
+// workers.dev.
+
+export type SymbolKind = "stocks" | "assets";
 
 export interface SymbolMatch {
   symbol: string;
   name: string;
-  exchange: string;          // display name, e.g. "NASDAQ"
-  type: "EQUITY" | "ETF";
+  exchange: string;          // e.g. "NASDAQ"; "Crypto" or "Futures" for assets
+  type: "EQUITY" | "ETF" | "CRYPTOCURRENCY" | "FUTURE";
 }
 
 export const TICKER_RE = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
+export const ASSET_RE = /^[A-Z0-9]{1,10}(?:-USD|=F)$/;
 
-const ALLOWED_TYPES = new Set(["EQUITY", "ETF"]);
+const KIND_TYPES: Record<SymbolKind, Set<string>> = {
+  stocks: new Set(["EQUITY", "ETF"]),
+  assets: new Set(["CRYPTOCURRENCY", "FUTURE"]),
+};
+
+// "Gold Dec 26" → "Gold", "Micro Gold Futures,Dec-2026" → "Micro Gold",
+// "Ethereum USD" → "Ethereum": the contract month and the quote currency
+// only add noise next to a symbol that already says it.
+export function cleanAssetName(name: string, type: string): string {
+  const n = type === "CRYPTOCURRENCY"
+    ? name.replace(/\s+USD$/i, "")
+    : name.replace(/,\s*[A-Z][a-z]{2}(?:-\d{0,4})?$/, "")
+        .replace(/\s+[A-Z][a-z]{2}\s+\d{2}$/, "")
+        .replace(/\s+Futures?$/i, "");
+  return n.trim() || name.trim();
+}
+
+// Short label for the Futures & Crypto table: ETH-USD → ETH, CL=F → CL.
+export function assetLabel(symbol: string): string {
+  return symbol.toUpperCase().replace(/-USD$/, "").replace(/=F$/, "");
+}
 const HIT_TTL_MS = 24 * 3600 * 1000;
 const MISS_TTL_MS = 60 * 1000;       // Yahoo sometimes answers a burst with nothing
 const MAX_ENTRIES = 500;
@@ -30,9 +56,13 @@ interface YahooSearchQuote {
  * Search Yahoo for stocks/ETFs matching a ticker or company name.
  * Returns null only when Yahoo could not be reached at all.
  */
-export async function searchSymbols(query: string, limit = 8): Promise<SymbolMatch[] | null> {
-  const key = query.trim().toLowerCase();
-  if (!key) return [];
+export async function searchSymbols(
+  query: string,
+  limit = 8,
+  kind: SymbolKind = "stocks",
+): Promise<SymbolMatch[] | null> {
+  if (!query.trim()) return [];
+  const key = `${kind}:${query.trim().toLowerCase()}`;
   const cached = memo.get(key);
   if (cached && Date.now() - cached.at < cached.ttl) return cached.value;
 
@@ -60,22 +90,30 @@ export async function searchSymbols(query: string, limit = 8): Promise<SymbolMat
   }
   if (!answered) return null;
 
+  const allowed = KIND_TYPES[kind];
+  const symbolRe = kind === "assets" ? ASSET_RE : TICKER_RE;
   const out: SymbolMatch[] = [];
   const seen = new Set<string>();
   for (const q of quotes) {
     const symbol = String(q.symbol ?? "").trim().toUpperCase();
     const type = String(q.quoteType ?? "").toUpperCase();
-    if (!symbol || seen.has(symbol) || !ALLOWED_TYPES.has(type) || !TICKER_RE.test(symbol)) continue;
+    if (!symbol || seen.has(symbol) || !allowed.has(type) || !symbolRe.test(symbol)) continue;
     seen.add(symbol);
+    const name = String(q.longname || q.shortname || symbol).trim();
     out.push({
       symbol,
-      name: String(q.longname || q.shortname || symbol).trim(),
-      exchange: String(q.exchDisp || q.exchange || "").trim(),
+      name: kind === "assets" ? cleanAssetName(name, type) : name,
+      exchange: kind === "assets"
+        ? (type === "FUTURE" ? "Futures" : "Crypto")
+        : String(q.exchDisp || q.exchange || "").trim(),
       type: type as SymbolMatch["type"],
     });
   }
-  // US listings first; otherwise keep Yahoo's relevance order (sort is stable).
-  out.sort((a, b) => Number(a.symbol.includes(".")) - Number(b.symbol.includes(".")));
+  // Stocks: US listings first; otherwise keep Yahoo's relevance order (the
+  // sort is stable).
+  if (kind === "stocks") {
+    out.sort((a, b) => Number(a.symbol.includes(".")) - Number(b.symbol.includes(".")));
+  }
   const value = out.slice(0, limit);
 
   if (memo.size >= MAX_ENTRIES) memo.delete(memo.keys().next().value as string);
@@ -117,7 +155,9 @@ export async function verifySymbol(symbol: string): Promise<SymbolMatch | null> 
 export async function resolveSymbol(
   query: string,
   results: SymbolMatch[] | null,
+  kind: SymbolKind = "stocks",
 ): Promise<{ match: SymbolMatch; how: "symbol" | "name" } | null> {
+  if (kind === "assets") return resolveAsset(query, results);
   const upper = query.trim().toUpperCase();
   const list = results ?? [];
   let bySymbol: SymbolMatch | null = list.find((r) => r.symbol === upper) ?? null;
@@ -127,6 +167,25 @@ export async function resolveSymbol(
   // Share classes are usually written "BRK.B"; Yahoo's symbol is "BRK-B".
   if (!bySymbol && /^[A-Z]{1,6}\.[A-Z]$/.test(upper)) bySymbol = await verifySymbol(upper.replace(".", "-"));
   const top = list.find((r) => !r.symbol.includes("."));
+  const byName = top && nameStartsWith(top.name, query) ? top : null;
+  if (bySymbol && byName && bySymbol.symbol !== byName.symbol) return null;
+  if (bySymbol) return { match: bySymbol, how: "symbol" };
+  if (byName) return { match: byName, how: "name" };
+  return null;
+}
+
+// Crypto / futures: "ETH-USD" or "GC=F" typed in full, a bare code ("eth"
+// → ETH-USD, spot before the ETH=F future; "cl" → CL=F), or a name the top
+// result starts with ("gold" → GC=F, "bitcoin" → BTC-USD).
+function resolveAsset(
+  query: string,
+  results: SymbolMatch[] | null,
+): { match: SymbolMatch; how: "symbol" | "name" } | null {
+  const upper = query.trim().toUpperCase().replace(/\s+/g, "");
+  const list = results ?? [];
+  const find = (sym: string) => list.find((r) => r.symbol === sym) ?? null;
+  const bySymbol = find(upper) ?? find(`${upper}-USD`) ?? find(`${upper}=F`);
+  const top = list[0];
   const byName = top && nameStartsWith(top.name, query) ? top : null;
   if (bySymbol && byName && bySymbol.symbol !== byName.symbol) return null;
   if (bySymbol) return { match: bySymbol, how: "symbol" };

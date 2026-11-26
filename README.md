@@ -137,9 +137,12 @@ headlines), and an index chart from one month to all history with the biggest
 moves pinned to that day's news.
 
 ### News
-Market headlines, US indices, futures and crypto, and a stocks list with
-1W / 1M / 3M / 1Y changes, sortable by any period, plus a chart and recent
-news for each stock.
+Market headlines, a **Futures & Crypto** list and a **Stocks** list, both
+with 1W / 1M / 3M / 1Y changes and sortable by any period. Futures & Crypto
+starts with Bitcoin, gold and silver; add any crypto or futures contract by
+name or symbol ("eth", "crude oil", "ES"). Tap a row for its chart and recent
+news; the chart opens on Bitcoin. On a computer the lists and the chart sit
+side by side, each half the width.
 
 ### Signals
 How the regime score is built, the bull / bear rule for every indicator and
@@ -331,16 +334,16 @@ crons = ["*/30 * * * *"]   # every 30 minutes
 | `GET /api/alerts` | Bull/bear rule result per indicator. |
 | `GET /api/regime` | Poor2Rich score, band and per-indicator contributions. |
 | `GET /api/indicator-history?indicator_id=…&days=…` | History of one indicator. |
-| `GET /api/market-overview?symbols=AAPL,MSFT` | Latest close plus 1W/1M/3M/1Y for indices, futures, crypto and stocks. |
+| `GET /api/market-overview?symbols=AAPL,MSFT&assets=ETH-USD,CL=F` | Latest close plus 1W/1M/3M/1Y for indices, futures, crypto and stocks. |
 | `GET /api/market-news` | General market headlines (Finnhub, with Yahoo Finance as a fallback). |
-| `GET /api/stock-detail?symbol=…&range=1y` | Price history plus 30 days of company news. |
+| `GET /api/stock-detail?symbol=…&range=1y` | Price history plus recent news (company news for stocks; Yahoo Finance news for crypto and futures). |
 | `GET /api/world-indices` | Major world indices with the day's move and headlines. |
 | `GET /api/index-history?symbol=…&range=…` | Index history with significant moves. |
 | `GET /api/index-news?symbol=…&date=…` | News for an index on one day. |
 | `GET /api/market-timing` | SPY, QQQ and DIA against their 8/21/50-day EMAs. |
 | `GET /api/watchlist` | The shared watchlist with scores; `?symbols=…` scores any list. |
 | `GET /api/stock-analysis?symbol=…&tf=d1y` | Bars, EMAs, volume and detected patterns for the stock chart. |
-| `GET /api/symbol-search?q=…` | Ticker and company-name lookup (US stocks and ETFs first). |
+| `GET /api/symbol-search?q=…` | Ticker and company-name lookup (US stocks and ETFs first); `&kind=assets` searches crypto and futures. |
 | `GET /api/status` | Heartbeat and which data keys are configured. |
 | `POST /api/refresh` | Out-of-cycle data refresh (rate-limited per IP). |
 

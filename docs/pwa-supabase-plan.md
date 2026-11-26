@@ -275,6 +275,24 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 - 手机地图按地图比例显示（`aspect-ratio: 1.75`，约 194px 高，原来 290px），标题改成两行：标题 + Reload / 时间 + 缩放按钮。
 - Watchlist 图表：拖动下方滑块时，以前只有成交量跟着变（`echarts.connect` 按 dataZoom 的 id 配对，滑块只在成交量图里）。两张图现在用同样的 id（`wl-zoom-inside`、`wl-zoom-slider`），价格图里放了一个隐藏的滑块，拖动和双指缩放都会两边同步。电脑端以前也有这个问题。
 
+### 第六轮：News 页（2026-11-26 已部署：Worker `e3005b82`，Pages `7e346e49`）
+
+- 页面标题 "Markets & News" 改成 "News"，和标签一致；副标题 "Today's headlines, futures, crypto and your stocks."。设置里两个列表的说明改成 "On the News tab"。
+- 删掉 US Market Indices 卡片。Futures & Crypto 和 Stocks 平分左栏高度，表格在卡片里滚动。
+- Futures & Crypto 可以自由添加加密货币和期货：
+  - 按名字或代码搜："eth" → ETH-USD，"crude oil" → CL=F，"ES" → ES=F；"oil" 这种含糊的词弹出候选列表。
+  - 每行可以置顶、删除。列表存在这台设备的 localStorage（`market.customAssets`、`market.hiddenAssets`、`market.assetOrder`），设置里可以重置。默认 BTC、XAU、XAG，删掉以后再搜可以加回来。
+  - Worker：`/api/symbol-search?kind=assets`（Yahoo 的 CRYPTOCURRENCY / FUTURE），`/api/market-overview?assets=ETH-USD,CL=F`（最多 30 个；自己加的行超过 30 分钟会重新拉取）。
+- 右边图表默认是比特币，标题行显示全名（"Bitcoin · BTC-USD"）。加密货币和期货也有新闻（Yahoo 新闻搜索；加密货币按名字搜，因为搜 "BTC-USD" 没有结果）。
+- 指数名字去掉 "^"：S&P 500 / Dow Jones / Nasdaq。
+- 电脑端（≥1280px）表格和图表各占一半：
+  - 表格文字都不换行。1280–1439px 单元格左右边距 6px、字号 13px，1440px 起边距 8px、字号 14px。1280px 时表格还剩约 38px 余量，不需要横向滚动。
+  - 图表标题行保持一行，公司名太长时以 "…" 结尾，鼠标悬停显示全名。
+- 页脚改成 "kiwiboard · a fresh cut of the market."（小写 a）。
+- D1 读不了的时候 News 页照常显示：`/api/market-overview`、`/api/stock-detail` 的新闻和 `/api/market-news` 的 D1 缓存读写失败时，直接从 Yahoo / Finnhub 拉取。Market Headlines 请求失败时显示 "Headlines are unavailable right now."，不再一直停在 Loading。
+- README 只改了文字（News 介绍和 API 表）。截图里没有 News 页，所以没换图。
+- 2026-11-26 23:30（新加坡时间）查过：D1 仍然超限（24 小时读 612 万行），要等 11-27 早上 8 点重置以后，才能建第五轮的 `idx_observations_inserted_at`。
+
 ## 平台限制
 
 - **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
@@ -287,11 +305,13 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 ## 回滚
 
 - **代码**：
+  - 第六轮之前：`git checkout 683522e -- cloudflare/pages/index.html cloudflare/worker/src README.md`
   - 第五轮之前：`git checkout 02b91c3 -- cloudflare/pages/index.html cloudflare/worker/src/lib/db.ts cloudflare/schema.sql`
   - 第三轮之前：`git checkout backup/pre-phone-pass-2026-11-26 -- cloudflare/pages/index.html`
   - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
   - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
 - **线上版本**：
+  - 第六轮之前：Pages `5e855b90`，Worker `0261a32a`。新页面要用新 Worker 的 `assets=` 参数（只退 Worker 的话，自己加的期货和加密货币没有数据），所以先退 Pages，再退 Worker。
   - 第五轮之前：Pages `3e8e6069`，Worker `1a6dad14`。页面和 Worker 互不依赖，可以分开回滚；退 Worker 会让 D1 读取量回到超限的水平。
   - 第四轮之前：Pages `ec183e75`，Worker `6d27fc5c`。回滚时先退 Pages，再退 Worker。
   - 第三轮之前：Pages `02c9f128`，Worker `6d27fc5c`。第三轮只改了 Pages，回滚只需要把 Pages 退回 `02c9f128`。

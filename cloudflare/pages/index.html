@@ -554,16 +554,17 @@
       .driver-row .name { font-size: 15px; font-weight: 600; color: var(--text-strong); }
       .driver-row .reason { font-size: 14px; line-height: 1.45; color: var(--muted); }
 
-      /* ═══════════════════ Markets & News ═══════════════════ */
-      /* Two columns only once the tables fit at full size (≥ 1280px); the
-         tables get a bit more than half so no column has to scroll. */
+      /* ═══════════════════ News ═══════════════════ */
+      /* Two columns from 1280px: the tables and the chart get half each.
+         Nothing in the tables wraps, and they fit without scrolling
+         sideways. */
       .grid-market { display: grid; grid-template-columns: 1fr; gap: 24px; align-items: stretch; }
       @media (min-width: 1280px) {
-        .grid-market { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
+        .grid-market { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
       }
       @media (max-width: 1279px) {
-        .market-tables .card.stocks-card { flex: none; min-height: 0; }
-        .stocks-card .stocks-table-wrap { max-height: 640px; }
+        .market-tables .card:is(.stocks-card, .assets-card) { flex: none; min-height: 0; }
+        :is(.stocks-card, .assets-card) .stocks-table-wrap { max-height: 640px; }
         .stock-detail-card { position: static; }
       }
       .market-tables { display: flex; flex-direction: column; gap: 24px; min-height: 0; }
@@ -571,15 +572,29 @@
       .market-tables tr.market-row:hover td { background: var(--surface-hover); }
       .market-tables tr.market-row.active td { background: var(--brand-soft); }
       .market-tables tr.market-row.active td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
-      .market-tables .card.stocks-card {
+      /* Futures & Crypto and Stocks split the left column evenly (two-column
+         layout); each table scrolls inside its card. */
+      .market-tables .card:is(.stocks-card, .assets-card) {
         flex: 1 1 0; min-height: 280px;
         display: flex; flex-direction: column; overflow: hidden;
       }
-      .stocks-card .stocks-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
-      /* Dates and numbers stay on one line ("11-25" used to break at the dash). */
-      .market-tables :is(th, td):not(:first-child) { white-space: nowrap; }
+      :is(.stocks-card, .assets-card) .stocks-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+      /* Table text never wraps ("11-25" used to break at the dash). */
+      .market-tables :is(th, td) { white-space: nowrap; }
+      /* Half-width columns are about 590px at 1280px and 670px from 1440px:
+         tighter cells (and slightly smaller text below 1440px) keep all
+         eight columns on one line without scrolling sideways. */
+      @media (min-width: 1280px) {
+        .market-tables .mini-card :is(th, td) { padding-left: 8px; padding-right: 8px; }
+        .market-tables .mini-card :is(th, td):first-child { padding-left: 22px; }
+      }
+      @media (min-width: 1280px) and (max-width: 1439px) {
+        .market-tables .mini-card :is(th, td) { padding-left: 6px; padding-right: 6px; font-size: 13px; }
+        .market-tables .mini-card :is(th, td):first-child { padding-left: 22px; }
+        .market-tables .mini-card th { font-size: 12px; }
+      }
       .market-tables .table-scroll { overflow-x: auto; }
-      .stocks-card .stocks-table-wrap thead th { position: sticky; top: 0; z-index: 1; }
+      :is(.stocks-card, .assets-card) .stocks-table-wrap thead th { position: sticky; top: 0; z-index: 1; }
       .stock-controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 22px 14px; }
       .stock-controls input,
       .wl-table-card .wl-add-row input {
@@ -628,6 +643,13 @@
       .stock-detail-header .sd-chg.up { color: var(--bull); }
       .stock-detail-header .sd-chg.down { color: var(--bear); }
       .stock-detail-header .sd-meta { margin-left: auto; font-size: 13px; color: var(--muted); }
+      /* Desktop: the chart header stays on one line; a long company name
+         ends in "…" (the full text is in its tooltip). */
+      @media (min-width: 1100px) {
+        .stock-detail-header { flex-wrap: nowrap; white-space: nowrap; }
+        .stock-detail-header > * { flex: none; }
+        .stock-detail-header .sd-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+      }
       .stock-detail-chart-wrap { padding: 0 18px 6px; }
       .stock-detail-controls { padding: 0 6px 4px; }
       #stock-detail-chart { width: 100%; height: 340px; }
@@ -1281,7 +1303,7 @@
         /* Markets: the per-row Date column is the least useful on a phone. */
         table[data-table-key] :is(th, td):nth-child(2) { display: none; }
         .stock-controls { padding: 0 16px 12px; }
-        .market-tables .card.stocks-card { flex: none; min-height: 0; }
+        .market-tables .card:is(.stocks-card, .assets-card) { flex: none; min-height: 0; }
         .stock-detail-card { position: static; }
         .stock-detail-header { padding: 18px 16px 10px; gap: 10px; }
         .stock-detail-header .sd-name, .stock-detail-header .sd-price { font-size: 22px; }
@@ -1626,12 +1648,12 @@
         </div>
       </section>
 
-      <!-- ============== Page 4: Market & News ============== -->
+      <!-- ============== Page 4: News ============== -->
       <section class="page" data-page="market" role="tabpanel">
       <div class="page-head">
         <div>
-          <h1 class="page-title">Markets &amp; News</h1>
-          <p class="page-sub">Today's headlines, US indices, futures, crypto and your stocks.</p>
+          <h1 class="page-title">News</h1>
+          <p class="page-sub">Today's headlines, futures, crypto and your stocks.</p>
         </div>
       </div>
 
@@ -1646,50 +1668,32 @@
 
       <div class="grid-market">
         <div class="market-tables">
-          <div class="card mini-card">
-            <h2>US Market Indices <a href="#" onclick="loadMarketOverview(true); return false;">Reload</a></h2>
-            <div class="table-scroll sticky-first">
-            <table data-table-key="indices">
-              <thead>
-                <tr>
-                  <th style="width: 18%">Name</th>
-                  <th style="width: 18%">Date</th>
-                  <th style="width: 18%">Latest</th>
-                  <th style="width: 11.5%" class="th-sortable" data-sort-col="chg_1w_pct"><span class="th-sort-label">1W <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                  <th style="width: 11.5%" class="th-sortable" data-sort-col="chg_1m_pct"><span class="th-sort-label">1M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                  <th style="width: 11.5%" class="th-sortable" data-sort-col="chg_3m_pct"><span class="th-sort-label">3M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                  <th style="width: 11.5%" class="th-sortable" data-sort-col="chg_1y_pct"><span class="th-sort-label">1Y <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                </tr>
-              </thead>
-              <tbody id="market-body-indices">
-                <tr id="market-loading-row-indices">
-                  <td colspan="7" class="meta">Loading...</td>
-                </tr>
-              </tbody>
-            </table>
-            </div>
-          </div>
-          <div class="card mini-card">
+          <div class="card mini-card assets-card">
             <h2>Futures &amp; Crypto <a href="#" onclick="loadMarketOverview(true); return false;">Reload</a></h2>
-            <div class="table-scroll sticky-first">
-            <table data-table-key="assets">
-              <thead>
-                <tr>
-                  <th style="width: 18%">Name</th>
-                  <th style="width: 18%">Date</th>
-                  <th style="width: 18%">Latest</th>
-                  <th style="width: 11.5%" class="th-sortable" data-sort-col="chg_1w_pct"><span class="th-sort-label">1W <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                  <th style="width: 11.5%" class="th-sortable" data-sort-col="chg_1m_pct"><span class="th-sort-label">1M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                  <th style="width: 11.5%" class="th-sortable" data-sort-col="chg_3m_pct"><span class="th-sort-label">3M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                  <th style="width: 11.5%" class="th-sortable" data-sort-col="chg_1y_pct"><span class="th-sort-label">1Y <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                </tr>
-              </thead>
-              <tbody id="market-body-assets">
-                <tr id="market-loading-row-assets">
-                  <td colspan="7" class="meta">Loading...</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="stock-controls">
+              <input id="asset-search-input" type="text" placeholder="Crypto or futures (e.g. ETH, gold, CL)" maxlength="40" />
+              <button id="asset-add-btn" type="button">Add</button>
+            </div>
+            <div class="stocks-table-wrap">
+              <table data-table-key="assets">
+                <thead>
+                  <tr>
+                    <th style="width: 16%">Name</th>
+                    <th style="width: 12%">Date</th>
+                    <th style="width: 13%">Latest</th>
+                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1w_pct"><span class="th-sort-label">1W <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1m_pct"><span class="th-sort-label">1M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_3m_pct"><span class="th-sort-label">3M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1y_pct"><span class="th-sort-label">1Y <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 19%; padding-right: 16px;"></th>
+                  </tr>
+                </thead>
+                <tbody id="market-body-assets">
+                  <tr id="market-loading-row-assets">
+                    <td colspan="8" class="meta">Loading...</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
           <div class="card mini-card stocks-card">
@@ -2510,6 +2514,29 @@
           return decorated.map((d) => d.r);
         }
 
+        // "Move to top" and "Remove" buttons at the end of a market row.
+        function _rowActionsCell(onTop, onRemove) {
+          const td = document.createElement("td");
+          td.style.textAlign = "right";
+          td.style.paddingRight = "16px";
+          const actions = document.createElement("span");
+          actions.className = "stock-row-actions";
+          const button = (cls, label, svg, fn) => {
+            const b = document.createElement("button");
+            b.className = cls;
+            b.type = "button";
+            b.title = label;
+            b.setAttribute("aria-label", label);
+            b.innerHTML = svg;
+            b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); });
+            return b;
+          };
+          actions.appendChild(button("stock-move-top-btn", "Move to top", '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14"/><path d="M12 20V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/></svg>', onTop));
+          actions.appendChild(button("stock-remove-btn", "Remove", '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>', onRemove));
+          td.appendChild(actions);
+          return td;
+        }
+
         function _renderMarketTable(tbody, rows, opts = {}) {
           if (!tbody) return;
           const loading = tbody.querySelector("tr[id^='market-loading-row']");
@@ -2518,7 +2545,7 @@
           if (!rows || rows.length === 0) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.colSpan = opts.withDelete ? 8 : 7;
+            td.colSpan = opts.withDelete || opts.assetActions ? 8 : 7;
             td.className = "meta";
             td.textContent = "No data (stooq may be unstable; please try again later or refresh the page)";
             tr.appendChild(td);
@@ -2544,7 +2571,7 @@
               ? r.as_of.slice(5)
               : (r.as_of ?? "—");
             tr.innerHTML = `
-              <td>${r.name ?? "—"}</td>
+              <td${r.fullName ? ` title="${_escHtml(r.fullName)}"` : ""}>${_escHtml(String(r.name ?? "—"))}</td>
               <td>${dateDisplay}</td>
               <td style="font-weight:700;">${(r.close !== null && r.close !== undefined) ? Number(r.close).toFixed(2) : "—"}</td>
               <td style="${_pctStyle(r.chg_1w_pct)}">${_fmtPct(r.chg_1w_pct)}</td>
@@ -2553,88 +2580,54 @@
               <td style="${_pctStyle(r.chg_1y_pct)}">${_fmtPct(r.chg_1y_pct)}</td>
             `;
             tr.addEventListener("click", () => {
-              loadStockDetail(symKey, r.name || symKey);
+              loadStockDetail(symKey, r.name || symKey, r.fullName || "");
             });
+            if (opts.assetActions) {
+              const key = symKey.toLowerCase();
+              tr.appendChild(_rowActionsCell(() => moveAssetToTop(key), () => removeAsset(key)));
+            }
             if (opts.withDelete) {
               const tickerName = normalizeTicker(r.name || r.symbol || "") || String(r.name || "");
               tr.dataset.ticker = tickerName;
               tr.draggable = true;
               _attachDragHandlers(tr);
 
-              const td = document.createElement("td");
-              td.style.textAlign = "right";
-              td.style.paddingRight = "16px";
-              const actions = document.createElement("span");
-              actions.className = "stock-row-actions";
-
-              const moveBtn = document.createElement("button");
-              moveBtn.className = "stock-move-top-btn";
-              moveBtn.type = "button";
-              moveBtn.title = "Move to top";
-              moveBtn.setAttribute("aria-label", "Move to top");
-              moveBtn.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14"/><path d="M12 20V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/></svg>';
-              moveBtn.addEventListener("click", (ev) => {
-                ev.stopPropagation();
-                if (tickerName) moveStockToTop(tickerName);
-              });
-
-              const delBtn = document.createElement("button");
-              delBtn.className = "stock-remove-btn";
-              delBtn.type = "button";
-              delBtn.title = "Remove";
-              delBtn.setAttribute("aria-label", "Remove");
-              delBtn.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
-              delBtn.addEventListener("click", (ev) => {
-                ev.stopPropagation();
-                const sym = normalizeTicker(r.symbol || r.name || "");
-                if (!sym) return;
-                const custom = new Set(getCustomStocks());
-                if (custom.has(sym)) {
-                  custom.delete(sym);
-                  saveCustomStocks(Array.from(custom));
-                } else {
-                  const hidden = new Set(getHiddenStocks());
-                  hidden.add(sym);
-                  saveHiddenStocks(Array.from(hidden));
-                }
-                // Drop the symbol from the manual order too.
-                saveStockOrder(getStockOrder().filter((s) => s.toUpperCase() !== sym.toUpperCase()));
-                loadMarketOverview();
-              });
-
-              actions.appendChild(moveBtn);
-              actions.appendChild(delBtn);
-              td.appendChild(actions);
-              tr.appendChild(td);
+              tr.appendChild(_rowActionsCell(
+                () => { if (tickerName) moveStockToTop(tickerName); },
+                () => {
+                  const sym = normalizeTicker(r.symbol || r.name || "");
+                  if (!sym) return;
+                  const custom = new Set(getCustomStocks());
+                  if (custom.has(sym)) {
+                    custom.delete(sym);
+                    saveCustomStocks(Array.from(custom));
+                  } else {
+                    const hidden = new Set(getHiddenStocks());
+                    hidden.add(sym);
+                    saveHiddenStocks(Array.from(hidden));
+                  }
+                  // Drop the symbol from the manual order too.
+                  saveStockOrder(getStockOrder().filter((s) => s.toUpperCase() !== sym.toUpperCase()));
+                  loadMarketOverview();
+                }));
             }
             tbody.appendChild(tr);
           }
         }
 
         function renderMarketRows(rows) {
-          const tbodyIndices = document.getElementById("market-body-indices");
-          const tbodyAssets = document.getElementById("market-body-assets");
-          const tbodyStocks = document.getElementById("market-body-stocks");
-          if (!tbodyIndices || !tbodyAssets || !tbodyStocks) return;
-
           const rowMap = new Map();
           for (const r of rows || []) {
             const key = String(r.symbol || "").toLowerCase();
             if (key) rowMap.set(key, r);
           }
+          // The S&P 500 / Nasdaq cards on the Market tab read this feed too.
           for (const sym of ["^spx", "^ndq"]) { if (rowMap.has(sym)) _kpi.market[sym] = rowMap.get(sym); }
           renderKpis();
 
-          const indexList = [
-            { symbol: "^spx", name: "^SPX" },
-            { symbol: "^dji", name: "^DJI" },
-            { symbol: "^ndq", name: "^NDQ" },
-          ];
-          const assetList = [
-            { symbol: "btc.v", name: "BTC" },
-            { symbol: "xauusd", name: "XAU" },
-            { symbol: "xagusd", name: "XAG" },
-          ];
+          const tbodyAssets = document.getElementById("market-body-assets");
+          const tbodyStocks = document.getElementById("market-body-stocks");
+          if (!tbodyAssets || !tbodyStocks) return;
 
           const defaultStocks = [
             "NVO", "AAPL", "GOOG", "NVDA", "TSLA", "META", "MSFT", "HOOD", "MU",
@@ -2650,13 +2643,13 @@
             stockList.push({ symbol: `${norm.toLowerCase()}.us`, name: norm });
           }
 
-          const indices = indexList.map(it => rowMap.get(it.symbol) || { name: it.name, symbol: it.symbol });
-          const assets = assetList.map(it => rowMap.get(it.symbol) || { name: it.name, symbol: it.symbol });
+          const assets = _assetList().map((a) => ({
+            ...(rowMap.get(a.key) || { symbol: a.key }), name: a.label, fullName: a.name,
+          }));
           let stocks = stockList.map(it => rowMap.get(it.symbol) || { name: it.name, symbol: it.symbol });
           stocks = _applyStockOrder(stocks);
 
-          _renderMarketTable(tbodyIndices, indices, { tableKey: "indices" });
-          _renderMarketTable(tbodyAssets, assets,   { tableKey: "assets" });
+          _renderMarketTable(tbodyAssets, assets,   { tableKey: "assets", assetActions: true });
           _renderMarketTable(tbodyStocks, stocks,   { tableKey: "stocks", withDelete: true });
 
           _refreshSortHeaders();
@@ -2840,6 +2833,88 @@
           localStorage.setItem(STOCK_HIDDEN_KEY, JSON.stringify(list));
         }
 
+        // ── Futures & Crypto list (saved on this device) ──────────────────
+        // Three defaults plus anything added from the search box. Added
+        // entries keep the Yahoo symbol (ETH-USD, CL=F), which is also their
+        // row key in lower case; defaults keep their original keys.
+        const ASSET_CUSTOM_KEY = "market.customAssets";
+        const ASSET_HIDDEN_KEY = "market.hiddenAssets";
+        const ASSET_ORDER_KEY = "market.assetOrder";
+        const DEFAULT_ASSETS = [
+          { key: "btc.v",  yahoo: "BTC-USD", label: "BTC", name: "Bitcoin" },
+          { key: "xauusd", yahoo: "GC=F",    label: "XAU", name: "Gold" },
+          { key: "xagusd", yahoo: "SI=F",    label: "XAG", name: "Silver" },
+        ];
+        const ASSET_RE = /^[A-Z0-9]{1,10}(?:-USD|=F)$/;
+        function _readList(key) {
+          try {
+            const arr = JSON.parse(localStorage.getItem(key) || "[]");
+            return Array.isArray(arr) ? arr : [];
+          } catch (e) { return []; }
+        }
+        function _writeList(key, list) {
+          try { localStorage.setItem(key, JSON.stringify(list)); } catch (e) { /* storage full or blocked */ }
+        }
+        function getCustomAssets() {
+          return _readList(ASSET_CUSTOM_KEY).filter((a) => a && typeof a.symbol === "string" && ASSET_RE.test(a.symbol));
+        }
+        // ETH-USD → ETH, CL=F → CL
+        function _assetLabel(sym) { return String(sym).toUpperCase().replace(/-USD$/, "").replace(/=F$/, ""); }
+        // Rows in display order: [{ key, label, name }]
+        function _assetList() {
+          const hidden = new Set(_readList(ASSET_HIDDEN_KEY).map(String));
+          const list = DEFAULT_ASSETS.filter((d) => !hidden.has(d.key))
+            .map((d) => ({ key: d.key, label: d.label, name: d.name }));
+          for (const a of getCustomAssets()) {
+            const key = a.symbol.toLowerCase();
+            if (!list.some((x) => x.key === key)) list.push({ key, label: _assetLabel(a.symbol), name: String(a.name || "") });
+          }
+          const out = [];
+          for (const k of _readList(ASSET_ORDER_KEY).map(String)) {
+            const it = list.find((x) => x.key === k);
+            if (it && !out.includes(it)) out.push(it);
+          }
+          for (const it of list) if (!out.includes(it)) out.push(it);
+          return out;
+        }
+        function addAsset(pick) {
+          const sym = String((pick && pick.symbol) || "").toUpperCase();
+          if (!ASSET_RE.test(sym)) return;
+          const def = DEFAULT_ASSETS.find((d) => d.yahoo === sym);
+          if (def) {
+            // A default removed earlier: show it again.
+            _writeList(ASSET_HIDDEN_KEY, _readList(ASSET_HIDDEN_KEY).filter((k) => k !== def.key));
+          } else if (!getCustomAssets().some((a) => a.symbol.toUpperCase() === sym)) {
+            _writeList(ASSET_CUSTOM_KEY, [...getCustomAssets(), { symbol: sym, name: String((pick && pick.name) || "").slice(0, 80) }]);
+          }
+          loadMarketOverview();
+        }
+        function removeAsset(key) {
+          const custom = getCustomAssets();
+          if (custom.some((a) => a.symbol.toLowerCase() === key)) {
+            _writeList(ASSET_CUSTOM_KEY, custom.filter((a) => a.symbol.toLowerCase() !== key));
+          } else if (!_readList(ASSET_HIDDEN_KEY).includes(key)) {
+            _writeList(ASSET_HIDDEN_KEY, [..._readList(ASSET_HIDDEN_KEY), key]);
+          }
+          _writeList(ASSET_ORDER_KEY, _readList(ASSET_ORDER_KEY).filter((k) => k !== key));
+          const cached = getMarketCache();
+          renderMarketRows(cached || []);
+        }
+        function moveAssetToTop(key) {
+          _writeList(ASSET_ORDER_KEY, [key, ..._assetList().map((a) => a.key).filter((k) => k !== key)]);
+          _tableSortState.assets = null;  // the manual order is what shows
+          const cached = getMarketCache();
+          renderMarketRows(cached || []);
+        }
+        function initAssetSearch() {
+          const input = document.getElementById("asset-search-input");
+          const btn = document.getElementById("asset-add-btn");
+          if (!input || !btn) return;
+          // "gold" → GC=F, "eth" → ETH-USD; anything vaguer opens a pick list.
+          const search = attachSymbolSearch(input, { onPick: addAsset, kind: "assets" });
+          btn.addEventListener("click", () => { if (search) search.submit(); });
+        }
+
         function saveMarketCache(rows) {
           try {
             localStorage.setItem(
@@ -2878,10 +2953,11 @@
         // ticker or one clear company match is added, anything vaguer opens
         // the list, so a made-up ticker never becomes an empty row.
         const _symCache = new Map();
-        async function _symLookup(q, resolve) {
-          const key = (resolve ? "r:" : "s:") + q.toLowerCase();
+        async function _symLookup(q, resolve, kind) {
+          const assets = kind === "assets";
+          const key = (assets ? "a" : "") + (resolve ? "r:" : "s:") + q.toLowerCase();
           if (_symCache.has(key)) return _symCache.get(key);
-          const resp = await fetch(`${window.API_BASE||""}/api/symbol-search?q=${encodeURIComponent(q)}${resolve ? "&resolve=1" : ""}`);
+          const resp = await fetch(`${window.API_BASE||""}/api/symbol-search?q=${encodeURIComponent(q)}${resolve ? "&resolve=1" : ""}${assets ? "&kind=assets" : ""}`);
           if (!resp.ok) throw new Error(String(resp.status));
           const data = await resp.json();
           if ((data.results || []).length || data.exact) _symCache.set(key, data);
@@ -2889,11 +2965,12 @@
         }
 
         // opts.onPick({symbol, name, exchange}) adds the pick; opts.usOnly
-        // hides listings with an exchange suffix (e.g. RY.TO).
+        // hides listings with an exchange suffix (e.g. RY.TO); opts.kind
+        // "assets" searches crypto and futures instead of stocks.
         function attachSymbolSearch(input, opts) {
           if (!input || input.dataset.symSearch) return null;
           input.dataset.symSearch = "1";
-          const { onPick, usOnly = false } = opts || {};
+          const { onPick, usOnly = false, kind = "stocks" } = opts || {};
           const list = document.createElement("div");
           list.className = "sym-suggest";
           list.id = input.id + "-suggest";
@@ -2957,7 +3034,7 @@
             const my = ++seq;
             if (!q) { close(); return; }
             try {
-              const data = await _symLookup(q, false);
+              const data = await _symLookup(q, false, kind);
               if (my === seq) render(keep(data.results));
             } catch (e) { if (my === seq) close(); }
           };
@@ -2968,7 +3045,7 @@
             const my = ++seq;
             render([], "Looking up…");
             let data;
-            try { data = await _symLookup(q, true); }
+            try { data = await _symLookup(q, true, kind); }
             catch (e) { if (my === seq) render([], "Search is unavailable right now, try again in a moment.", true); return; }
             if (my !== seq) return;
             const exact = data.exact && keep([data.exact])[0];
@@ -2976,7 +3053,7 @@
             const results = keep(data.results);
             if (results.length) render(results, `Pick the one you mean for "${q}":`);
             else if (usOnly && (data.exact || (data.results || []).length)) render([], "Only US-listed stocks and ETFs can be added here.", true);
-            else render([], `No stock or ETF matches "${q}".`, true);
+            else render([], kind === "assets" ? `No crypto or futures match "${q}".` : `No stock or ETF matches "${q}".`, true);
           };
           input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(suggest, 220); });
           input.addEventListener("keydown", (ev) => {
@@ -3029,6 +3106,8 @@
             const extra = getCustomStocks();
             const params = new URLSearchParams();
             if (extra.length) params.set("symbols", extra.join(","));
+            const assets = getCustomAssets().map((a) => a.symbol);
+            if (assets.length) params.set("assets", assets.join(","));
             if (force) params.set("refresh", "1");
             const qs = params.toString();
             const url = `${window.API_BASE||""}/api/market-overview${qs ? "?" + qs : ""}`;
@@ -3060,10 +3139,13 @@
 
         let lastStockData = null;
 
-        async function loadStockDetail(symbol, displayName) {
+        async function loadStockDetail(symbol, displayName, fullName = "") {
           if (!symbol) return;
+          // Index tickers read as names here: "^SPX" shows as "SPX".
+          displayName = String(displayName || symbol).replace(/^\^/, "");
           currentStockSymbol = symbol;
-          currentStockName = displayName || symbol;
+          currentStockName = displayName;
+          currentStockFullName = fullName;
           _highlightActiveStockRow();
 
           const emptyEl = document.getElementById("stock-detail-empty");
@@ -3082,6 +3164,7 @@
           chgEl.textContent = "";
           chgEl.className = "sd-chg";
           metaEl.textContent = "";
+          metaEl.title = "";
 
           try {
             const url = `${window.API_BASE||""}/api/stock-detail?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(currentStockRange)}`;
@@ -3105,7 +3188,8 @@
               chgEl.classList.toggle("up", v >= 0);
               chgEl.classList.toggle("down", v < 0);
             }
-            metaEl.textContent = data.yahoo ? `Yahoo: ${data.yahoo}` : "";
+            metaEl.textContent = fullName ? `${fullName} · ${data.yahoo || ""}` : (data.yahoo ? `Yahoo: ${data.yahoo}` : "");
+            metaEl.title = metaEl.textContent;
 
             renderStockChart(series, displayName || symbol);
             renderStockNews(newsEl, data);
@@ -3319,7 +3403,7 @@
           if (!data.has_news) {
             const e = document.createElement("div");
             e.className = "empty";
-            e.textContent = "News feed is only available for US equity tickers (Finnhub /company-news). Indices, futures, and crypto are not supported.";
+            e.textContent = "No news feed for this symbol.";
             container.appendChild(e);
             return;
           }
@@ -3359,7 +3443,7 @@
               currentStockRange = r;
               root.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
               if (currentStockSymbol) {
-                loadStockDetail(currentStockSymbol, currentStockName);
+                loadStockDetail(currentStockSymbol, currentStockName, currentStockFullName);
               }
             });
           });
@@ -3690,6 +3774,7 @@
         let stockDetailChart = null;
         let currentStockSymbol = null;
         let currentStockName = null;
+        let currentStockFullName = "";
         let currentStockRange = "1y";
         let indexDetailChart = null;
         let worldMapReady = false;
@@ -4507,9 +4592,14 @@
           const list = document.getElementById("market-news-list");
           const meta = document.getElementById("market-news-meta");
           if (!list) return;
+          // A failed refresh keeps the headlines already shown; only the
+          // first load swaps "Loading…" for a message.
+          const unavailable = () => {
+            if (!list.querySelector(".mn-item")) list.innerHTML = `<div class="mn-empty">Headlines are unavailable right now.</div>`;
+          };
           try {
             const resp = await fetch(`${window.API_BASE||""}/api/market-news`);
-            if (!resp.ok) return;
+            if (!resp.ok) return unavailable();
             const data = await resp.json();
             const arts = (data && data.articles) || [];
             if (!data.news_enabled) {
@@ -4532,7 +4622,7 @@
                 <div class="mn-sub">${sub}</div>
               </a>`;
             }).join("");
-          } catch (e) { /* ignore */ }
+          } catch (e) { unavailable(); }
         }
 
         async function loadMarketTiming() {
@@ -5450,13 +5540,14 @@
           initTabs();
           loadMarketOverview();
           initStockSearch();
+          initAssetSearch();
           _initSortableHeaders();
           initIndicatorRanges();
           initIndicatorChart();
           initIndexDetailControls();
           initMapToolbar();
           initStockDetail();
-          loadStockDetail("^spx", "^SPX");
+          loadStockDetail("btc.v", "BTC", "Bitcoin");
           loadWorldIndices(false);
           loadIndicators();
           loadSignalsAndRegime();
@@ -5849,7 +5940,7 @@
       </div>
 
       <footer class="site-footer">
-        <div class="footer-brand">kiwiboard · A fresh cut of the market.</div>
+        <div class="footer-brand">kiwiboard · a fresh cut of the market.</div>
         <button type="button" class="footer-more" aria-expanded="false">Sources &amp; contact</button>
         <div class="footer-sources">
           Indicator Sources:
@@ -6211,6 +6302,7 @@
       const ALL_BANDS = ["Strong Buy", "Buy", "Cautious Buy", "Neutral", "Caution", "Risk", "Strong Risk"];
       const DEFAULT_BANDS = ["Strong Buy", "Buy", "Cautious Buy", "Risk", "Strong Risk"];
       const STOCK_KEYS = ["market.customStocks", "market.hiddenStocks", "market.stockOrder"];
+      const ASSET_KEYS = ["market.customAssets", "market.hiddenAssets", "market.assetOrder"];
       const dlg = document.getElementById("alerts-dialog");
       const body = document.getElementById("alerts-body");
       const secAccount = document.getElementById("st-account");
@@ -6459,13 +6551,25 @@
           ? [added ? `${added} added` : "", removed ? `${removed} removed` : "", ordered ? "custom order" : ""].filter(Boolean).join(", ")
           : "Default list";
         rows.push(`<div class="ad-row">
-          <div><b>Stocks list</b><div class="ad-sub">On Markets &amp; News, saved on this device: ${what}.</div></div>
+          <div><b>Stocks list</b><div class="ad-sub">On the News tab, saved on this device: ${what}.</div></div>
           <button type="button" class="ad-btn" id="st-reset-stocks"${changed ? "" : " disabled"}>Reset</button>
         </div>`);
-        secLists.innerHTML = `<h4 class="st-h" id="st-lists-h">Stock lists</h4>${rows.join("")}<div class="ad-status" id="st-lists-status"></div>`;
+        const aAdded = readList("market.customAssets").length;
+        const aRemoved = readList("market.hiddenAssets").length;
+        const aOrdered = readList("market.assetOrder").length > 0;
+        const aChanged = Boolean(aAdded || aRemoved || aOrdered);
+        const aWhat = aChanged
+          ? [aAdded ? `${aAdded} added` : "", aRemoved ? `${aRemoved} removed` : "", aOrdered ? "custom order" : ""].filter(Boolean).join(", ")
+          : "Default list";
+        rows.push(`<div class="ad-row">
+          <div><b>Futures &amp; Crypto list</b><div class="ad-sub">On the News tab, saved on this device: ${aWhat}.</div></div>
+          <button type="button" class="ad-btn" id="st-reset-assets"${aChanged ? "" : " disabled"}>Reset</button>
+        </div>`);
+        secLists.innerHTML = `<h4 class="st-h" id="st-lists-h">Lists</h4>${rows.join("")}<div class="ad-status" id="st-lists-status"></div>`;
         const wlBtn = secLists.querySelector("#st-reset-wl");
         if (wlBtn) wlBtn.onclick = resetWatchlist;
         secLists.querySelector("#st-reset-stocks").onclick = resetStocks;
+        secLists.querySelector("#st-reset-assets").onclick = resetAssets;
       }
       async function resetWatchlist() {
         const a = auth();
@@ -6487,6 +6591,13 @@
         if (typeof loadMarketOverview === "function") loadMarketOverview();
         renderLists();
         listsStatus("Stocks list restored.");
+      }
+      function resetAssets() {
+        if (!window.confirm("Restore the default Futures & Crypto list on this device? Anything you added, removed or reordered goes back to BTC, gold and silver.")) return;
+        for (const k of ASSET_KEYS) { try { localStorage.removeItem(k); } catch (e) {} }
+        if (typeof loadMarketOverview === "function") loadMarketOverview();
+        renderLists();
+        listsStatus("Futures & Crypto list restored.");
       }
 
       // ── Delete account section ──────────────────────────────────────────

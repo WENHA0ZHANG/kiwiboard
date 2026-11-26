@@ -25,8 +25,8 @@ import { sbDeleteUser, sbSelect, supabaseAdminConfigured } from "./lib/supabase"
 import { computeSignals } from "./lib/signals";
 import { computeMarketRegime } from "./lib/regime";
 import { fetchYahooChart, fetchYahooOHLCV, fetchYahooNews } from "./lib/yahoo";
-import { resolveSymbol, searchSymbols, verifySymbol } from "./lib/symbols";
-import type { SymbolMatch } from "./lib/symbols";
+import { ASSET_RE, assetLabel, resolveSymbol, searchSymbols, verifySymbol } from "./lib/symbols";
+import type { SymbolKind, SymbolMatch } from "./lib/symbols";
 import { computeMetrics, ema } from "./lib/analysis";
 import { fetchStooqDailyCloses, fetchStooqQuote } from "./lib/stooq";
 import { fetchCompanyNews, fetchGeneralNews, newsTickerForYahooSymbol } from "./lib/finnhub";
@@ -118,13 +118,14 @@ const DEFAULT_MARKET_SYMBOLS = [
 ];
 
 // `name` is the display label the SPA uses in the market tables — keep it
-// stable even when Yahoo's own ticker looks different (e.g. ^GSPC vs ^SPX,
-// GC=F vs XAU, BTC-USD vs BTC). Previously we wrote `name: yahooSym` into
-// D1 which caused the Reload button to "rename" rows to their Yahoo slugs.
+// stable even when Yahoo's own ticker looks different (e.g. ^GSPC vs
+// S&P 500, GC=F vs XAU, BTC-USD vs BTC). Previously we wrote `name: yahooSym`
+// into D1 which caused the Reload button to "rename" rows to their Yahoo
+// slugs. Index labels carry no "^": people read names, not tickers.
 const DEFAULT_ITEMS: Array<{ symbol: string; yahoo: string; name: string }> = [
-  { symbol: "^spx",     yahoo: "^GSPC",   name: "^SPX"  },
-  { symbol: "^dji",     yahoo: "^DJI",    name: "^DJI"  },
-  { symbol: "^ndq",     yahoo: "^IXIC",   name: "^NDQ"  },
+  { symbol: "^spx",     yahoo: "^GSPC",   name: "S&P 500"   },
+  { symbol: "^dji",     yahoo: "^DJI",    name: "Dow Jones" },
+  { symbol: "^ndq",     yahoo: "^IXIC",   name: "Nasdaq"    },
   { symbol: "btc.v",    yahoo: "BTC-USD", name: "BTC"   },
   { symbol: "xauusd",   yahoo: "GC=F",    name: "XAU"   },
   { symbol: "xagusd",   yahoo: "SI=F",    name: "XAG"   },
@@ -527,14 +528,16 @@ export default {
       const q = (url.searchParams.get("q") || "").replace(/\s+/g, " ").trim().slice(0, 40);
       if (!q) return json({ q, results: [] });
       if (!allowSymbolSearch(request)) return err("Too many searches, slow down a little", 429);
-      const results = await searchSymbols(q);
+      // kind=assets: crypto and futures for the Futures & Crypto table.
+      const kind: SymbolKind = url.searchParams.get("kind") === "assets" ? "assets" : "stocks";
+      const results = await searchSymbols(q, 8, kind);
       const resolve = url.searchParams.get("resolve") === "1";
       if (results === null && !resolve) return err("Symbol search is unavailable right now", 502);
       const body: { q: string; results: SymbolMatch[]; exact?: SymbolMatch | null; how?: string } = {
         q, results: results ?? [],
       };
       if (resolve) {
-        const r = await resolveSymbol(q, results);
+        const r = await resolveSymbol(q, results, kind);
         body.exact = r ? r.match : null;
         if (r) body.how = r.how;
       }
@@ -563,19 +566,47 @@ export default {
           symbolPlan.set(norm.toLowerCase(), { yahoo, name: yahoo });
         }
       }
+      // Crypto / futures added in the Futures & Crypto table, as Yahoo
+      // symbols (ETH-USD, CL=F). Defaults already cover BTC, gold, silver.
+      const defaultYahoo = new Set(DEFAULT_ITEMS.map((i) => i.yahoo));
+      const extraAssets = (url.searchParams.get("assets") ?? "").split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter((s) => ASSET_RE.test(s) && !defaultYahoo.has(s))
+        .slice(0, 30);
+      for (const yahoo of extraAssets) {
+        symbolPlan.set(yahoo.toLowerCase(), { yahoo, name: assetLabel(yahoo) });
+      }
 
-      // Try cache from D1 first (unless force refresh)
+      // Try cache from D1 first (unless force refresh). A failed read (D1
+      // down or over its daily quota) falls back to fetching everything.
       let dbRows: Record<string, unknown>[] = [];
       if (!force) {
         const syms = [...symbolPlan.keys()];
-        dbRows = await getMarketOverviewRows(env.DB, syms);
+        try {
+          dbRows = await getMarketOverviewRows(env.DB, syms);
+        } catch (e) {
+          console.error("market-overview: D1 read failed", e);
+        }
       }
 
       const dbMap = new Map<string, Record<string, unknown>>();
       for (const r of dbRows) dbMap.set(String(r.symbol).toLowerCase(), r);
 
-      // Fetch missing symbols from Yahoo (async, best-effort)
-      const missingSymbols = [...symbolPlan.entries()].filter(([sym]) => !dbMap.has(sym));
+      // The cron refreshes the default rows; symbols people added are only
+      // fetched here, so re-fetch those once they're 30 minutes old (crypto
+      // trades all weekend). A failed re-fetch keeps the cached row.
+      const defaultKeys = new Set(DEFAULT_ITEMS.map((i) => i.symbol));
+      const stale = (sym: string, row: Record<string, unknown>) => {
+        if (defaultKeys.has(sym)) return false;
+        const t = Date.parse(String(row.updated_at ?? "").replace(" ", "T"));
+        return !Number.isFinite(t) || Date.now() - t > 30 * 60 * 1000;
+      };
+
+      // Fetch missing (or stale) symbols from Yahoo (async, best-effort)
+      const missingSymbols = [...symbolPlan.entries()].filter(([sym]) => {
+        const row = dbMap.get(sym);
+        return !row || stale(sym, row);
+      });
       if (missingSymbols.length > 0) {
         const fetched = await Promise.allSettled(
           missingSymbols.map(([sym, plan]) => buildMarketRow(sym, plan.yahoo, plan.name)),
@@ -593,7 +624,8 @@ export default {
           // Using `void` here silently dropped the D1 write, which is why
           // the Market page would "flash fresh" on Reload and then revert
           // to the old values after a browser refresh.
-          ctx.waitUntil(upsertMarketOverviewRows(env.DB, newRows));
+          ctx.waitUntil(upsertMarketOverviewRows(env.DB, newRows)
+            .catch((e) => console.error("market-overview: D1 write failed", e)));
         }
       }
 
@@ -632,11 +664,39 @@ export default {
 
       let articles: unknown[] = [];
       const newsTicker = newsTickerForYahooSymbol(yahooSym);
-      const newsEnabled = Boolean(env.FINNHUB_KEY);
-      if (newsEnabled && newsTicker) {
-        const todayStr = new Date().toISOString().slice(0, 10);
+      // Crypto and futures have no Finnhub company news; Yahoo's news
+      // search covers them (BTC-USD, GC=F) and needs no key.
+      const assetNews = !newsTicker && ASSET_RE.test(yahooSym);
+      const newsEnabled = assetNews || Boolean(env.FINNHUB_KEY);
+      // The news cache is a nice-to-have: if D1 is unavailable the chart
+      // still loads and the news is fetched live.
+      const cachedNews = async (key: string, day: string) => {
+        try { return await getNewsCacheEntry(env.DB, key, day, 3600); } catch { return null; }
+      };
+      const saveNews = (key: string, day: string, list: unknown[]) => {
+        ctx.waitUntil(upsertNewsCache(env.DB, key, day, list as never)
+          .catch((e) => console.error("stock-detail: news cache write failed", e)));
+      };
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (assetNews) {
+        const key = `asset:${yahooSym}`;
+        const cached = await cachedNews(key, todayStr);
+        if (cached && cached.length) {
+          articles = cached;
+        } else {
+          // Yahoo's news search finds nothing for "BTC-USD" but plenty for
+          // "Bitcoin", so crypto is searched by name; futures symbols work.
+          let query = yahooSym;
+          if (yahooSym.endsWith("-USD")) {
+            const hit = (await searchSymbols(yahooSym, 8, "assets"))?.find((r) => r.symbol === yahooSym);
+            if (hit) query = hit.name;
+          }
+          articles = await fetchYahooNews(query, 8);
+          if (articles.length) saveNews(key, todayStr, articles);
+        }
+      } else if (newsEnabled && newsTicker) {
         const fromStr = new Date(Date.now() - 30 * 86400 * 1000).toISOString().slice(0, 10);
-        const cached = await getNewsCacheEntry(env.DB, `stock:${newsTicker}`, todayStr, 3600);
+        const cached = await cachedNews(`stock:${newsTicker}`, todayStr);
         if (cached && cached.length) {
           articles = cached;
         } else {
@@ -644,13 +704,11 @@ export default {
           if (!articles.length) {
             articles = await fetchYahooNews(newsTicker, 8);
           }
-          if (articles.length) {
-            ctx.waitUntil(upsertNewsCache(env.DB, `stock:${newsTicker}`, todayStr, articles));
-          }
+          if (articles.length) saveNews(`stock:${newsTicker}`, todayStr, articles);
         }
       }
 
-      return json({ symbol, yahoo: yahooSym, range: rng, latest_close: latestClose, chg_pct: chgPct, series, news: articles, news_enabled: newsEnabled, has_news: Boolean(newsTicker) });
+      return json({ symbol, yahoo: yahooSym, range: rng, latest_close: latestClose, chg_pct: chgPct, series, news: articles, news_enabled: newsEnabled, has_news: Boolean(newsTicker) || assetNews });
     }
 
     // ── /api/world-indices ───────────────────────────────────────────────────
@@ -947,11 +1005,12 @@ export default {
     }
 
     // ── /api/market-news ────────────────────────────────────────────────────
-    // General market headlines for the "Market & News" page. Tries Finnhub
-    // first, then falls back to Yahoo Finance (no key needed). Cached 30 min.
+    // General market headlines for the News page. Tries Finnhub first, then
+    // falls back to Yahoo Finance (no key needed). Cached 30 min in D1; if D1
+    // is unavailable the headlines are fetched live.
     if (pathname === "/api/market-news" && request.method === "GET") {
       const todayStr = new Date().toISOString().slice(0, 10);
-      const cached = await getNewsCacheEntry(env.DB, "market:general:v2", todayStr, 1800);
+      const cached = await getNewsCacheEntry(env.DB, "market:general:v2", todayStr, 1800).catch(() => null);
       if (cached && cached.length) return json({ articles: cached, news_enabled: true });
 
       let articles: unknown[] = [];
@@ -982,7 +1041,8 @@ export default {
         articles = merged.slice(0, 14);
       }
       if (articles.length) {
-        ctx.waitUntil(upsertNewsCache(env.DB, "market:general:v2", todayStr, articles));
+        ctx.waitUntil(upsertNewsCache(env.DB, "market:general:v2", todayStr, articles)
+          .catch((e) => console.error("market-news: cache write failed", e)));
       }
       return json({ articles, news_enabled: true });
     }
