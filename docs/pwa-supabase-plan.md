@@ -230,6 +230,28 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
   - `.d-only` / `.m-only`：只在桌面或只在手机显示。
   - 以上都只在手机宽度生效。
 
+### 第四轮：按公司名添加股票（2026-11-26 已部署：Worker `1a6dad14`，Pages `f10840b7`）
+
+起因：用户在 Watchlist 输入公司名，比如 google，会被当成股票代码 GOOGLE 存进去，变成一行空数据。Markets 的 Stocks 框也有同样的问题。
+
+- **Worker** `GET /api/symbol-search?q=`（`lib/symbols.ts`）：
+  - 走 Yahoo 的搜索接口，只返回股票和 ETF，美股（代码不带 .XX 后缀）排在前面。
+  - query1 拿不到结果时会换 query2 再试一次。
+  - 搜索结果缓存在 isolate 内存里，因为 workers.dev 上 Cache API 不起作用。
+  - 每个 IP 每分钟最多 60 次。
+- **`resolve=1`**（点 Add 或按 Enter 时调用）：
+  - 精确的代码（nvda、BRK.B → BRK-B）直接添加。
+  - 公司名能对上唯一一家美股时直接添加（apple → AAPL、coca cola → KO）。
+  - 名字对不上（google → Alphabet）或两种解释冲突时，不自动添加，列出候选让用户选。
+  - 两种解释冲突的例子：ford 既可以是 FORD 这个代码，也可以是福特汽车 F。FORD 在 Yahoo 没有价格数据时，按 F 处理。
+- **服务器校验**：`POST /api/watchlist` 存之前先确认这个代码在 Yahoo 存在，并且用正式公司名作为显示名。
+- **页面**：
+  - 两个添加框都有输入提示，候选列表在输入框下面，占整行宽，不会被卡片裁掉。
+  - 支持方向键、Enter、Esc，手机上点一下就添加。
+  - Stocks 框只收美股。
+  - Watchlist 里抓不到价格的旧行，代码旁边会显示 "no data"，用每行末尾的 × 删除。
+- **部署顺序**：先部署 Worker，再部署 Pages。新页面依赖新接口，反过来的话添加功能会暂时不能用。
+
 ## 平台限制
 
 - **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
@@ -245,6 +267,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
   - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
   - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
 - **线上版本**：
+  - 第四轮之前：Pages `ec183e75`，Worker `6d27fc5c`。回滚时先退 Pages，再退 Worker。
   - 第三轮之前：Pages `02c9f128`，Worker `6d27fc5c`。第三轮只改了 Pages，回滚只需要把 Pages 退回 `02c9f128`。
   - 第二轮之前：Pages `b982715b`，Worker `5e16764e`（`npx wrangler rollback 5e16764e-b6ab-4ea7-8a1b-3a9fa8b9e436`）。
   - 改版前：Pages `759dc1c8`，Worker `9310c3f9`。

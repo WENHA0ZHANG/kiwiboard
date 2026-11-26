@@ -25,6 +25,8 @@ import { sbDeleteUser, sbSelect, supabaseAdminConfigured } from "./lib/supabase"
 import { computeSignals } from "./lib/signals";
 import { computeMarketRegime } from "./lib/regime";
 import { fetchYahooChart, fetchYahooOHLCV, fetchYahooNews } from "./lib/yahoo";
+import { resolveSymbol, searchSymbols, verifySymbol } from "./lib/symbols";
+import type { SymbolMatch } from "./lib/symbols";
 import { computeMetrics, ema } from "./lib/analysis";
 import { fetchStooqDailyCloses, fetchStooqQuote } from "./lib/stooq";
 import { fetchCompanyNews, fetchGeneralNews, newsTickerForYahooSymbol } from "./lib/finnhub";
@@ -323,6 +325,22 @@ function allowWatchlistRefresh(request: Request, env: Env): Promise<boolean> {
 }
 
 const WATCH_SYMBOL_RE = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
+
+// Light per-isolate throttle for the ticker type-ahead: one request per
+// pause in typing, so 60 a minute per IP is plenty for a person.
+const symbolSearchHits = new Map<string, { at: number; n: number }>();
+function allowSymbolSearch(request: Request): boolean {
+  const ip = request.headers.get("CF-Connecting-IP") || "?";
+  const now = Date.now();
+  const e = symbolSearchHits.get(ip);
+  if (!e || now - e.at > 60_000) {
+    if (symbolSearchHits.size > 5000) symbolSearchHits.clear();
+    symbolSearchHits.set(ip, { at: now, n: 1 });
+    return true;
+  }
+  e.n += 1;
+  return e.n <= 60;
+}
 const MAX_PERSONAL_SYMBOLS = 100;   // matches the per-list cap in Supabase
 const MAX_SCORED_PER_REQUEST = 12;  // keeps one request inside the CPU budget
 const PERSONAL_STALE_SECONDS = 30 * 60;
@@ -499,6 +517,31 @@ export default {
 
       const th = INDICATOR_THRESHOLDS[indicatorId] ?? {};
       return json({ indicator_id: indicatorId, unit: series[0] ? obs[0]?.unit : null, series, ...th });
+    }
+
+    // ── /api/symbol-search ───────────────────────────────────────────────────
+    // Type-ahead for the "add a stock" boxes: "google" → GOOG …, "nvda" → NVDA.
+    // With resolve=1 (Add / Enter) it also says which single listing the text
+    // clearly means, so a company name or a typo never becomes an empty row.
+    if (pathname === "/api/symbol-search" && request.method === "GET") {
+      const q = (url.searchParams.get("q") || "").replace(/\s+/g, " ").trim().slice(0, 40);
+      if (!q) return json({ q, results: [] });
+      if (!allowSymbolSearch(request)) return err("Too many searches, slow down a little", 429);
+      const results = await searchSymbols(q);
+      const resolve = url.searchParams.get("resolve") === "1";
+      if (results === null && !resolve) return err("Symbol search is unavailable right now", 502);
+      const body: { q: string; results: SymbolMatch[]; exact?: SymbolMatch | null; how?: string } = {
+        q, results: results ?? [],
+      };
+      if (resolve) {
+        const r = await resolveSymbol(q, results);
+        body.exact = r ? r.match : null;
+        if (r) body.how = r.how;
+      }
+      const resp = json(body);
+      // Matches barely change; let the browser reuse them for a few minutes.
+      if (body.results.length || body.exact) resp.headers.set("Cache-Control", "public, max-age=300");
+      return resp;
     }
 
     // ── /api/market-overview ─────────────────────────────────────────────────
@@ -797,14 +840,17 @@ export default {
         if (!sym || !WATCH_SYMBOL_RE.test(sym)) {
           return err("Invalid symbol");
         }
+        // Only real listings: "GOOGLE" used to be saved as an empty row.
+        const listing = await verifySymbol(sym);
+        if (!listing) return err(`No stock or ETF found for "${sym}"`, 404);
+        const name = String(body.name || (listing.name !== sym ? listing.name : "") || sym).trim().slice(0, 120);
         await addWatchlistSymbol(
-          env.DB, sym,
-          String(body.name || sym).trim().slice(0, 120),
+          env.DB, sym, name,
           String(body.note || "").trim().slice(0, 500) || null,
         );
         // Pre-warm metrics so the row shows up populated.
         ctx.waitUntil((async () => {
-          const m = await buildWatchMetrics(sym, body.name || sym);
+          const m = await buildWatchMetrics(sym, name);
           if (m) await upsertWatchlistMetrics(env.DB, [{ symbol: sym, focus_score: m.focus_score ?? 0, payload: m }]);
         })());
         return json({ ok: true, symbol: sym });

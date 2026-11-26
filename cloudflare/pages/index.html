@@ -832,9 +832,30 @@
       .wl-focus-item .wl-chg .wl-volr { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
 
       .wl-table-card .wl-add-row { display: flex; gap: 8px; padding: 2px 22px 0; align-items: center; flex-wrap: wrap; }
-      .wl-table-card .wl-add-row input { flex: 0 1 160px; }
+      .wl-table-card .wl-add-row input { flex: 0 1 240px; }
       .wl-table-card .wl-add-status { font-size: 13px; color: var(--muted); margin-left: auto; }
       .wl-table-card .wl-add-status.err { color: var(--bear); }
+      .wl-table-card .wl-sym-cell small.wl-nodata { color: var(--warning); }
+
+      /* Ticker / company type-ahead: a full-width list under the add row
+         (in the flow, so a card's overflow never clips it). */
+      .sym-suggest {
+        flex: 1 1 100%; order: 10; margin-top: 2px; max-height: 340px; overflow-y: auto;
+        border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg);
+      }
+      .sym-suggest[hidden] { display: none; }
+      .sym-hint { padding: 9px 12px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+      .sym-hint.err { color: var(--bear); }
+      .sym-hint + .sym-opt { border-top: 1px solid var(--border); }
+      .sym-opt {
+        display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 10px;
+        padding: 10px 12px; font-size: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+      }
+      .sym-opt + .sym-opt { border-top: 1px solid var(--border); }
+      .sym-opt b { font-weight: 650; color: var(--text-strong); }
+      .sym-opt .sym-name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .sym-opt .sym-ex { font-size: 12px; color: var(--muted); white-space: nowrap; }
+      .sym-opt:hover, .sym-opt.is-active { background: var(--surface-hover); }
       .wl-table-card .wl-signin-row {
         display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
         padding: 2px 22px 0; font-size: 14px; color: var(--muted);
@@ -1655,7 +1676,7 @@
           <div class="card mini-card stocks-card">
             <h2>Stocks <a href="#" onclick="loadMarketOverview(true); return false;">Reload</a></h2>
             <div class="stock-controls">
-              <input id="stock-search-input" type="text" placeholder="Search/add ticker (e.g., AAPL)" />
+              <input id="stock-search-input" type="text" placeholder="Ticker or company (e.g. AAPL, Tesla)" maxlength="40" />
               <button id="stock-add-btn" type="button">Add</button>
             </div>
             <div class="stocks-table-wrap">
@@ -1960,7 +1981,7 @@
             <button type="button" id="wl-signin-btn">Sign in</button>
           </div>
           <div class="wl-add-row" id="wl-add-row">
-            <input id="wl-add-symbol" type="text" placeholder="Ticker (e.g. NVDA)" maxlength="10" autocomplete="off" />
+            <input id="wl-add-symbol" type="text" placeholder="Ticker or company name" maxlength="40" />
             <button onclick="addWatchlistSymbol(); return false;">Add</button>
             <span class="wl-add-status" id="wl-add-status"></span>
           </div>
@@ -2878,12 +2899,127 @@
           return s;
         }
 
+        // ── Ticker / company type-ahead for the "add a stock" boxes ───────
+        // Typing a name ("google") or a ticker lists matches from
+        // /api/symbol-search. Add / Enter resolves the text first: an exact
+        // ticker or one clear company match is added, anything vaguer opens
+        // the list, so a made-up ticker never becomes an empty row.
+        const _symCache = new Map();
+        async function _symLookup(q, resolve) {
+          const key = (resolve ? "r:" : "s:") + q.toLowerCase();
+          if (_symCache.has(key)) return _symCache.get(key);
+          const resp = await fetch(`${window.API_BASE||""}/api/symbol-search?q=${encodeURIComponent(q)}${resolve ? "&resolve=1" : ""}`);
+          if (!resp.ok) throw new Error(String(resp.status));
+          const data = await resp.json();
+          if ((data.results || []).length || data.exact) _symCache.set(key, data);
+          return data;
+        }
+
+        // opts.onPick({symbol, name, exchange}) adds the pick; opts.usOnly
+        // hides listings with an exchange suffix (e.g. RY.TO).
+        function attachSymbolSearch(input, opts) {
+          if (!input || input.dataset.symSearch) return null;
+          input.dataset.symSearch = "1";
+          const { onPick, usOnly = false } = opts || {};
+          const list = document.createElement("div");
+          list.className = "sym-suggest";
+          list.id = input.id + "-suggest";
+          list.setAttribute("role", "listbox");
+          list.hidden = true;
+          (input.closest(".wl-add-row, .stock-controls") || input.parentElement).appendChild(list);
+          input.setAttribute("role", "combobox");
+          input.setAttribute("aria-autocomplete", "list");
+          input.setAttribute("aria-controls", list.id);
+          input.setAttribute("aria-expanded", "false");
+          input.setAttribute("autocomplete", "off");
+          input.setAttribute("autocorrect", "off");
+          input.setAttribute("autocapitalize", "off");
+          input.setAttribute("spellcheck", "false");
+          let items = [];
+          let active = -1;
+          let seq = 0;
+          let timer = 0;
+          const keep = (arr) => (arr || []).filter((r) => r && r.symbol && (!usOnly || !r.symbol.includes(".")));
+          const close = () => {
+            list.hidden = true; list.innerHTML = ""; items = []; active = -1;
+            input.setAttribute("aria-expanded", "false");
+            input.removeAttribute("aria-activedescendant");
+          };
+          const render = (arr, hint, isErr) => {
+            items = arr; active = -1;
+            if (!arr.length && !hint) { close(); return; }
+            list.innerHTML = (hint ? `<div class="sym-hint${isErr ? " err" : ""}">${_escHtml(hint)}</div>` : "") +
+              arr.map((r, i) => `<div class="sym-opt" role="option" id="${list.id}-${i}" data-i="${i}" aria-selected="false">` +
+                `<b>${_escHtml(r.symbol)}</b><span class="sym-name">${_escHtml(r.name || "")}</span>` +
+                `<span class="sym-ex">${_escHtml(r.exchange || "")}</span></div>`).join("");
+            list.hidden = false;
+            input.setAttribute("aria-expanded", "true");
+          };
+          const highlight = (i) => {
+            const opts = list.querySelectorAll(".sym-opt");
+            opts.forEach((o, k) => { o.classList.toggle("is-active", k === i); o.setAttribute("aria-selected", String(k === i)); });
+            active = i;
+            if (opts[i]) { input.setAttribute("aria-activedescendant", opts[i].id); opts[i].scrollIntoView({ block: "nearest" }); }
+            else input.removeAttribute("aria-activedescendant");
+          };
+          const pick = (r) => { seq++; close(); input.value = ""; onPick(r); };
+          const suggest = async () => {
+            const q = input.value.trim();
+            const my = ++seq;
+            if (!q) { close(); return; }
+            try {
+              const data = await _symLookup(q, false);
+              if (my === seq) render(keep(data.results));
+            } catch (e) { if (my === seq) close(); }
+          };
+          // Add button / Enter with typed text.
+          const submit = async () => {
+            const q = input.value.trim();
+            if (!q) { input.focus(); return; }
+            const my = ++seq;
+            render([], "Looking up…");
+            let data;
+            try { data = await _symLookup(q, true); }
+            catch (e) { if (my === seq) render([], "Search is unavailable right now, try again in a moment.", true); return; }
+            if (my !== seq) return;
+            const exact = data.exact && keep([data.exact])[0];
+            if (exact) { pick(exact); return; }
+            const results = keep(data.results);
+            if (results.length) render(results, `Pick the one you mean for "${q}":`);
+            else if (usOnly && (data.exact || (data.results || []).length)) render([], "Only US-listed stocks and ETFs can be added here.", true);
+            else render([], `No stock or ETF matches "${q}".`, true);
+          };
+          input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(suggest, 220); });
+          input.addEventListener("keydown", (ev) => {
+            if (ev.key === "ArrowDown" && items.length) { ev.preventDefault(); highlight(Math.min(items.length - 1, active + 1)); }
+            else if (ev.key === "ArrowUp" && items.length) { ev.preventDefault(); highlight(Math.max(0, active - 1)); }
+            else if (ev.key === "Escape") { if (!list.hidden) { ev.preventDefault(); close(); } }
+            else if (ev.key === "Enter") {
+              ev.preventDefault();
+              clearTimeout(timer);
+              if (active >= 0 && items[active]) pick(items[active]); else submit();
+            }
+          });
+          // Keep focus in the input while tapping an option.
+          list.addEventListener("mousedown", (ev) => ev.preventDefault());
+          list.addEventListener("click", (ev) => {
+            const o = ev.target.closest(".sym-opt");
+            if (o && items[Number(o.dataset.i)]) pick(items[Number(o.dataset.i)]);
+          });
+          document.addEventListener("click", (ev) => {
+            if (list.hidden || list.contains(ev.target) || ev.target === input) return;
+            if (ev.target.closest && ev.target.closest(".wl-add-row, .stock-controls") === list.parentElement) return;
+            close();
+          });
+          return { submit, close };
+        }
+
         function initStockSearch() {
           const input = document.getElementById("stock-search-input");
           const btn = document.getElementById("stock-add-btn");
           if (!input || !btn) return;
-          const add = () => {
-            const norm = normalizeTicker(input.value);
+          const add = (pick) => {
+            const norm = normalizeTicker(pick && pick.symbol);
             if (!norm) return;
             const current = new Set(getCustomStocks());
             current.add(norm);
@@ -2891,16 +3027,12 @@
             const hidden = new Set(getHiddenStocks());
             hidden.delete(norm);
             saveHiddenStocks(Array.from(hidden));
-            input.value = "";
             loadMarketOverview();
           };
-          btn.addEventListener("click", add);
-          input.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          });
+          // Typed text is looked up first ("tesla" → TSLA); Enter is handled
+          // by the type-ahead. US listings only: this table is US stocks.
+          const search = attachSymbolSearch(input, { onPick: add, usOnly: true });
+          btn.addEventListener("click", () => { if (search) search.submit(); });
         }
 
         async function loadMarketOverview(force) {
@@ -4504,8 +4636,11 @@
           }
           // Render in the persisted (drag) order. Signed out, the shared list
           // is read-only: no drag handle, no remove button.
+          const pendingSyms = new Set(wlData.pending || []);
           tbody.innerHTML = rows.map(r => {
             const m = r.metrics || {};
+            // Scored but nothing came back: usually a ticker that doesn't exist.
+            const noData = !r.metrics && !pendingSyms.has(r.symbol);
             const isActive = r.symbol === wlCurrentSymbol;
             const isHot = (m.focus_score || 0) >= 4;
             const chg1d = m.chg_1d_pct;
@@ -4513,7 +4648,7 @@
             const chg1m = m.chg_1m_pct;
             const sym = _escHtml(r.symbol);
             return `<tr class="wl-row ${isActive ? "is-active" : ""} ${isHot ? "is-hot" : ""}" data-sym="${sym}" draggable="${editable}">
-              <td class="wl-sym-cell">${editable ? `<span class="wl-grip" title="Drag to reorder">⠿</span>` : ""}${sym}${r.note ? `<small>${_escHtml(r.note)}</small>` : ""}</td>
+              <td class="wl-sym-cell">${editable ? `<span class="wl-grip" title="Drag to reorder">⠿</span>` : ""}${sym}${noData ? `<small class="wl-nodata" title="No prices found for this ticker. Remove it with × at the end of the row.">no data</small>` : ""}${r.note ? `<small>${_escHtml(r.note)}</small>` : ""}</td>
               <td>${_wlFmt(m.price)}</td>
               <td class="${_wlChgClass(chg1d)}">${_wlFmtPct(chg1d)}</td>
               <td class="${_wlChgClass(chg1w)}">${_wlFmtPct(chg1w)}</td>
@@ -4604,14 +4739,22 @@
           } catch (e) { /* best-effort */ }
         }
 
-        async function addWatchlistSymbol() {
-          const inp = document.getElementById("wl-add-symbol");
+        // The Add button (no pick yet) resolves the typed text through the
+        // type-ahead, which calls back here with a confirmed listing.
+        let _wlSymSearch = null;
+        async function addWatchlistSymbol(pick) {
+          if (!pick || !pick.symbol) { if (_wlSymSearch) _wlSymSearch.submit(); return; }
           const status = document.getElementById("wl-add-status");
-          const raw = (inp.value || "").trim().toUpperCase();
+          const raw = String(pick.symbol).trim().toUpperCase();
+          const name = String(pick.name || raw).trim().slice(0, 120);
           status.classList.remove("err");
-          if (!raw || !/^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(raw)) {
-            status.textContent = "Enter a valid ticker (e.g. NVDA, BRK-B).";
+          if (!/^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(raw)) {
+            status.textContent = "Enter a ticker or company name.";
             status.classList.add("err");
+            return;
+          }
+          if ((wlData.rows || []).some((r) => r.symbol === raw)) {
+            status.textContent = `${raw} is already in the list.`;
             return;
           }
           const mode = _wlMode();
@@ -4620,7 +4763,7 @@
           try {
             if (mode === "personal") {
               const { error } = await window.ptAuth.client.from("watchlist_items").insert({
-                list: "watchlist", symbol: raw, name: raw,
+                list: "watchlist", symbol: raw, name,
                 sort_order: (wlData.rows || []).length,
               });
               if (error) {
@@ -4632,7 +4775,7 @@
               const resp = await fetch(`${window.API_BASE||""}/api/watchlist`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...(await window.ptAuth.authHeaders()) },
-                body: JSON.stringify({ symbol: raw }),
+                body: JSON.stringify({ symbol: raw, name }),
               });
               if (!resp.ok) {
                 const body = await resp.json().catch(() => ({}));
@@ -4641,7 +4784,6 @@
                 return;
               }
             }
-            inp.value = "";
             status.textContent = `Added ${raw}. Scoring…`;
             await loadWatchlist(false);
             // Auto-select the newly-added symbol.
@@ -5159,15 +5301,10 @@
               else { wlCurrentTf = tf; wlCurrentInterval = WL_TF_INTERVAL[tf] || "1d"; }
             });
           });
-          // Enter-to-add
-          const inp = document.getElementById("wl-add-symbol");
-          if (inp) {
-            inp.addEventListener("keydown", (ev) => {
-              if (ev.key === "Enter") { ev.preventDefault(); addWatchlistSymbol(); }
-            });
-            // Uppercase as the user types.
-            inp.addEventListener("input", () => { inp.value = inp.value.toUpperCase(); });
-          }
+          // Ticker or company name → matches; Enter / pick adds.
+          _wlSymSearch = attachSymbolSearch(document.getElementById("wl-add-symbol"), {
+            onPick: (r) => addWatchlistSymbol(r),
+          });
           const signinBtn = document.getElementById("wl-signin-btn");
           if (signinBtn) signinBtn.addEventListener("click", () => { if (window.ptAuth) window.ptAuth.signIn(); });
         }
