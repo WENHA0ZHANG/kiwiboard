@@ -833,7 +833,6 @@
 
       .wl-table-card .wl-add-row { display: flex; gap: 8px; padding: 2px 22px 0; align-items: center; flex-wrap: wrap; }
       .wl-table-card .wl-add-row input { flex: 0 1 160px; }
-      .wl-table-card .wl-add-row input#wl-add-note { flex: 1 1 180px; }
       .wl-table-card .wl-add-status { font-size: 13px; color: var(--muted); margin-left: auto; }
       .wl-table-card .wl-add-status.err { color: var(--bear); }
       .wl-table-card .wl-signin-row {
@@ -1062,6 +1061,17 @@
       /* Compact copy of the regime score; only shown in the phone header. */
       .regime-pill { display: none; }
 
+      /* Phone-only helpers (the ≤ 720px block turns them on). */
+      .m-only { display: none !important; }
+      .m-more, .footer-more { display: none; }
+      .card > h2.gl-head { display: none; }
+      .wl-plan-banner .pb-less { display: none; }
+      .news-sum { display: block; }
+      .sg-chev {
+        display: inline-block; width: 14px; height: 14px; margin-left: 5px; vertical-align: -2px;
+        color: var(--faint); transition: transform .2s ease;
+      }
+
       /* ═══════════════════ Responsive ═══════════════════ */
       @media (max-width: 1279px) {
         .hdr-inner { gap: 30px; }
@@ -1264,10 +1274,46 @@
         .wl-timing-grid { padding: 2px 14px 14px; }
         .wl-table-card .wl-add-row, .wl-table-card .wl-signin-row { padding: 0 16px; }
         .wl-detail-header { padding: 18px 16px 4px; }
-        .wl-key-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px 16px 4px; }
-        .wl-plan-banner { margin: 10px 16px 0; grid-template-columns: 1fr; gap: 10px; }
-        .wl-detail-controls { padding: 12px 12px 0; flex-wrap: wrap; }
-        .wl-legend-hint { padding: 6px 16px 16px; }
+        /* Key metrics: one 4-across strip; the explanations live in the glossary. */
+        .wl-key-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 12px 16px 2px; }
+        .wl-key-metrics .kv { padding: 8px 5px 7px; }
+        .wl-key-metrics .kv .kv-label { font-size: clamp(9.5px, 2.7vw, 10.5px); letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .wl-key-metrics .kv .kv-value { font-size: clamp(12px, 3.6vw, 14.5px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .wl-key-metrics .kv .kv-sub { display: none; }
+        /* Trade plan: Stop / TP1 / TP2 side by side; tap for the full plan. */
+        .wl-plan-banner {
+          position: relative; margin: 10px 16px 0; padding: 10px 30px 10px 12px;
+          grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+          cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        .wl-plan-banner::after {
+          content: ""; position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; margin-top: -6px;
+          border-right: 1.75px solid var(--muted); border-bottom: 1.75px solid var(--muted);
+          transform: rotate(45deg); transition: transform .2s ease;
+        }
+        .wl-plan-banner.open { grid-template-columns: 1fr; gap: 10px; }
+        .wl-plan-banner.open::after { top: 18px; margin-top: 0; transform: rotate(-135deg); }
+        .wl-plan-banner:not(.open) .pb-more { display: none; }
+        .wl-plan-banner:not(.open) .pb-less { display: inline; }
+        .wl-plan-banner .pb-cell .pb-value { font-size: 16px; }
+        /* Timeframes on one row. */
+        .wl-detail-controls { padding: 12px 12px 0; flex-wrap: nowrap; gap: 2px; }
+        .wl-detail-controls button { flex: 1 1 auto; padding: 6px 3px; font-size: 13.5px; white-space: nowrap; }
+        /* The chart explains itself; the hint text only cost space. */
+        .wl-legend-hint { display: none; }
+        .wl-detail-chart-wrap { padding: 4px 4px 12px; }
+        #wl-detail-vol { height: 158px; }
+        .wl-table-card .wl-add-row input { flex: 1 1 auto; min-width: 0; }
+        /* Market Timing: name, price and status; tap a tile for the EMAs. */
+        .wl-timing-tile[data-m-toggle] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .wl-timing-tile[data-m-toggle]::after {
+          content: ""; position: absolute; right: 16px; bottom: 21px; width: 7px; height: 7px;
+          border-right: 1.75px solid var(--muted); border-bottom: 1.75px solid var(--muted);
+          transform: rotate(45deg); transition: transform .2s ease;
+        }
+        .wl-timing-tile.open::after { transform: rotate(-135deg); bottom: 17px; }
+        .wl-timing-tile:not(.open) :is(.wt-emas, .wt-note) { display: none; }
+        .wl-timing-tile .wt-status { margin-top: 8px; }
         .wl-intro { padding: 16px; }
 
         /* Bigger tap targets; 16px inputs stop iOS from zooming on focus. */
@@ -1283,6 +1329,105 @@
         .auth-pop { width: min(280px, calc(100vw - 32px)); }
         .settings-dialog { padding: 16px 16px 12px; }
         .st-seg button { padding: 6px 8px; }
+
+        /* ── Less text on phones: details fold behind a tap ── */
+        .d-only { display: none !important; }
+        .m-only { display: revert !important; }
+        .page:not([data-page="prediction"]) .page-sub,
+        .drivers-card .panel-sub, #indicator-chart-meta { display: none; }
+
+        /* Cards marked data-fold show only their heading until tapped. */
+        [data-fold] > .fold-head {
+          cursor: pointer; user-select: none; -webkit-user-select: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+        [data-fold] > .fold-head::after {
+          content: ""; flex: none; width: 8px; height: 8px; margin: -4px 4px 0 auto;
+          border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+          transform: rotate(45deg); transition: transform .2s ease;
+        }
+        [data-fold].open > .fold-head::after { margin-top: 4px; transform: rotate(-135deg); }
+        [data-fold]:not(.open) > :not(.fold-head) { display: none !important; }
+        [data-fold]:not(.open) > .fold-head { padding-bottom: 16px; }
+        .card > h2.gl-head { display: flex; }
+
+        /* Long lists: the first few items, then "Show N more". */
+        .m-clip:not(.m-all) > .m-extra { display: none !important; }
+        .m-more {
+          display: flex; align-items: center; justify-content: center;
+          width: calc(100% - 32px); min-height: 40px; margin: 2px 16px 16px; padding: 0 12px;
+          border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+          color: var(--text); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .news-item { scroll-margin: 16px 0 calc(84px + env(safe-area-inset-bottom)); }
+        .trend-card { scroll-margin-top: 12px; }
+
+        /* Key Indicators: a compact two-line row per reading. */
+        .indicator-table thead { display: none; }
+        .indicator-table, .indicator-table tbody { display: block; }
+        .indicator-table tr.indicator-row {
+          display: grid; grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-areas: "name val" "date st"; align-items: baseline; gap: 2px 12px;
+          padding: 11px 16px; border-top: 1px solid var(--border);
+        }
+        .indicator-table tr.indicator-row td { padding: 0; border: 0; background: none; box-shadow: none; }
+        .indicator-table tr.indicator-row.active { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+        .indicator-table tr.indicator-row.active td { box-shadow: none; }
+        .indicator-table .ind-name { grid-area: name; min-width: 0; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .indicator-table .ind-val { grid-area: val; text-align: right; font-size: 15px; }
+        .indicator-table .ind-date { grid-area: date; font-size: 12.5px; }
+        .indicator-table .ind-status { grid-area: st; text-align: right; font-size: 12.5px; }
+
+        /* Signals: indicator + Top/Bottom per row; tap a row for its rule. */
+        .signal-counts { flex-wrap: nowrap; gap: 16px; }
+        #signals-table thead { display: none; }
+        #signals-table, #signals-tbody { display: block; }
+        #signals-tbody tr {
+          display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+          grid-template-areas: "name top bot" "desc desc desc"; align-items: center; gap: 6px 8px;
+          padding: 11px 16px; border-top: 1px solid var(--border);
+          cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        #signals-tbody tr td { padding: 0; border: 0; background: none; }
+        #signals-tbody .sg-no { display: none; }
+        #signals-tbody .sg-name { grid-area: name; min-width: 0; font-size: 14.5px; font-weight: 500; color: var(--text-strong); }
+        #signals-tbody .sg-top { grid-area: top; }
+        #signals-tbody .sg-bot { grid-area: bot; }
+        #signals-tbody .sg-desc { grid-area: desc; font-size: 13px; line-height: 1.5; }
+        #signals-tbody tr:not(.open) .sg-desc { display: none; }
+        #signals-tbody tr.open .sg-chev { transform: rotate(180deg); }
+        #signals-tbody .pill { padding: 2px 9px; font-size: 12px; }
+        /* Only real signals get a pill; a quiet row shows one faint dash. */
+        #signals-tbody .pill.neutral { display: none; }
+        #signals-tbody tr[data-state="none"] .sg-bot::after { content: "—"; color: var(--faint); }
+
+        /* Past tops & bottoms: one line per cell, the table scrolls sideways
+           with the event column pinned. */
+        [data-page="signals"] .table-scroll.sticky-first :is(th, td):not(:first-child) { white-space: nowrap; }
+        [data-page="signals"] .table-scroll.sticky-first td:first-child { min-width: 132px; }
+
+        /* Global: range buttons on one row. */
+        #index-detail-card > h2 .h2-actions { margin-left: 0; flex: 1 1 100%; }
+        .index-detail-controls { display: flex; flex: 1 1 auto; flex-wrap: nowrap; gap: 2px; }
+        .index-detail-controls button { flex: 1 1 0; padding: 6px 0; }
+
+        /* News: no scroll box inside the card; summaries clamp to two lines
+           (tap to read the rest). */
+        .stock-detail-news { max-height: none; overflow: visible; }
+        .news-sum {
+          display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+          overflow: hidden; cursor: pointer;
+        }
+        .news-sum.open { display: block; -webkit-line-clamp: unset; }
+
+        /* Footer: sources and contact behind one button. */
+        .site-footer:not(.open) :is(.footer-sources, .footer-links) { display: none; }
+        .footer-more {
+          display: inline-flex; align-items: center; margin: 0 0 8px; padding: 6px 14px;
+          border: 1px solid var(--border); border-radius: 999px; background: none;
+          color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
+        }
       }
     </style>
   </head>
@@ -1413,7 +1558,7 @@
             <div class="panel-head">
               <div>
                 <h2 class="panel-title">Key Indicators</h2>
-                <div class="panel-sub">The readings behind the regime score. Click a row to chart it.</div>
+                <div class="panel-sub"><span class="d-only">The readings behind the regime score. Click a row to chart it.</span><span class="m-only">Tap a reading to chart it.</span></div>
               </div>
             </div>
             <div class="table-scroll">
@@ -1640,8 +1785,8 @@
         </div>
       </div>
 
-      <div class="card stack-gap">
-        <h2>Market Regime Algorithm</h2>
+      <div class="card stack-gap" data-fold>
+        <h2 class="fold-head">Market Regime Algorithm</h2>
         <div class="regime-method">
           <div class="regime-method-col">
             <div class="rm-eyebrow">Formula</div>
@@ -1684,20 +1829,20 @@
 
       <div class="grid">
         <div class="card" style="grid-column: 1 / -1;">
-          <h2>Bull/Bear Alerts: Top Signals / Bottom Signals (Simplified Rules Based on Historical Thresholds)</h2>
+          <h2><span>Bull/Bear Alerts<span class="d-only">: Top Signals / Bottom Signals (Simplified Rules Based on Historical Thresholds)</span></span></h2>
           <div class="signal-counts">
             <div>
               <span class="pill bear">Top Signals</span>
-              <span class="meta">Count: <code><span id="top-score">—</span></code></span>
+              <span class="meta"><span class="d-only">Count: </span><code><span id="top-score">—</span></code></span>
             </div>
             <div>
               <span class="pill bull">Bottom Signals</span>
-              <span class="meta">Count: <code><span id="bottom-score">—</span></code></span>
+              <span class="meta"><span class="d-only">Count: </span><code><span id="bottom-score">—</span></code></span>
             </div>
           </div>
 
           <div class="table-scroll">
-          <table>
+          <table id="signals-table">
             <thead>
               <tr>
                 <th style="width: 6%; text-align: center;">No.</th>
@@ -1717,8 +1862,8 @@
       </div>
 
 
-      <div class="card stack-gap-top">
-        <h2>History: Major Top/Bottom Comparisons After 2000 (Based on ^SPX Drawdown ≥ 15%)</h2>
+      <div class="card stack-gap-top" data-fold>
+        <h2 class="fold-head"><span class="d-only">History: Major Top/Bottom Comparisons After 2000 (Based on ^SPX Drawdown ≥ 15%)</span><span class="m-only">Past tops &amp; bottoms since 2000</span></h2>
         <div class="table-scroll sticky-first">
         <table>
           <thead>
@@ -1785,7 +1930,7 @@
               </div>
             </div>
             <div class="wl-key-metrics" id="wl-key-metrics"></div>
-            <div class="wl-plan-banner" id="wl-plan-banner"></div>
+            <div class="wl-plan-banner" id="wl-plan-banner" data-m-toggle></div>
             <div class="wl-detail-controls" id="wl-detail-controls">
               <button data-tf="m30">30M</button>
               <button data-tf="h1">1H</button>
@@ -1816,7 +1961,6 @@
           </div>
           <div class="wl-add-row" id="wl-add-row">
             <input id="wl-add-symbol" type="text" placeholder="Ticker (e.g. NVDA)" maxlength="10" autocomplete="off" />
-            <input id="wl-add-note" type="text" placeholder="Optional note" maxlength="60" />
             <button onclick="addWatchlistSymbol(); return false;">Add</button>
             <span class="wl-add-status" id="wl-add-status"></span>
           </div>
@@ -1854,7 +1998,8 @@
             </div>
           </div>
 
-          <div class="card">
+          <div class="card" data-fold>
+            <h2 class="gl-head fold-head">Glossary</h2>
             <div class="wl-intro">
               <div class="wl-glossary">
                 <div class="gl-item"><code>LOD</code> Low of Day</div>
@@ -1952,6 +2097,118 @@
           void el.offsetWidth;
           el.classList.add("kb-fade");
         }
+
+        // ── Phones (≤ 720px): less text, more taps ───────────────────────
+        // [data-fold] cards collapse to their heading, [data-m-toggle] rows
+        // and tiles reveal their details, and long lists show the first few
+        // items plus "Show N more". Desktop always shows everything.
+        const _phoneMq = window.matchMedia("(max-width: 720px)");
+        function _isPhone() { return _phoneMq.matches; }
+        // Phone-sized chart box (a hidden tab reports 0 px: use the media query).
+        function _narrowChart(id) {
+          const el = document.getElementById(id);
+          const w = el ? el.clientWidth : 0;
+          return w > 0 ? w < 560 : _isPhone();
+        }
+        // Short indicator names for phone rows (same as the regime drivers).
+        const IND_SHORT = {
+          vix: "VIX", cnn_fear_greed_index: "Fear & Greed", cnn_put_call_options: "Put/Call (5d)",
+          bofa_bull_bear: "AAII Bull-Bear", sp500_rsi: "S&P 500 RSI", us_high_yield_spread: "HY OAS",
+          nasdaq100_above_20d_ma: "NDX > 20d MA", sp500_pe_ratio: "S&P 500 PE",
+          nasdaq100_pe_ratio: "NDX 100 PE", cboe_skew: "CBOE SKEW", yc_10y_2y: "10Y-2Y Curve",
+        };
+        function _indShort(id, name) { return _escHtml(IND_SHORT[id] || name || id || ""); }
+        const SG_CHEV = '<svg class="ico sg-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+
+        // Hide `extras` (children of listEl) on phones behind a button right
+        // after listEl. With a `key`, an opened list stays open across
+        // re-renders; null resets it (new content).
+        const _mOpenLists = new Set();
+        function _mMoreLabel(btn, all) {
+          btn.textContent = all ? "Show less" : btn.dataset.label;
+          btn.setAttribute("aria-expanded", String(all));
+        }
+        function _mFold(listEl, extras, label, key) {
+          if (!listEl) return;
+          let btn = listEl.nextElementSibling;
+          if (!btn || !btn.classList.contains("m-more")) btn = null;
+          listEl.classList.add("m-clip");
+          listEl.querySelectorAll(".m-extra").forEach((e) => e.classList.remove("m-extra"));
+          extras.forEach((e) => e.classList.add("m-extra"));
+          if (!extras.length) {
+            if (btn) btn.remove();
+            listEl.classList.remove("m-all");
+            return;
+          }
+          if (!btn) {
+            btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "m-more";
+            listEl.after(btn);
+            btn.addEventListener("click", () => {
+              const all = listEl.classList.toggle("m-all");
+              const k = btn.dataset.key;
+              if (k) { if (all) _mOpenLists.add(k); else _mOpenLists.delete(k); }
+              _mMoreLabel(btn, all);
+            });
+          }
+          btn.dataset.key = key || "";
+          btn.dataset.label = label;
+          const all = Boolean(key && _mOpenLists.has(key));
+          listEl.classList.toggle("m-all", all);
+          _mMoreLabel(btn, all);
+        }
+        // Open a folded list (a chart marker pointed at a hidden item).
+        function _mUnfold(listEl) {
+          if (!listEl || listEl.classList.contains("m-all")) return;
+          listEl.classList.add("m-all");
+          const btn = listEl.nextElementSibling;
+          if (btn && btn.classList.contains("m-more")) {
+            if (btn.dataset.key) _mOpenLists.add(btn.dataset.key);
+            _mMoreLabel(btn, true);
+          }
+        }
+        document.addEventListener("click", (ev) => {
+          if (!_isPhone()) return;
+          const t = ev.target;
+          if (!(t instanceof Element)) return;
+          const more = t.closest(".footer-more");
+          if (more) {
+            const open = more.closest(".site-footer").classList.toggle("open");
+            more.setAttribute("aria-expanded", String(open));
+            return;
+          }
+          if (t.closest("a, input, select, textarea, .m-more")) return;
+          const head = t.closest("[data-fold] > .fold-head");
+          const host = head ? head.parentElement : t.closest("[data-m-toggle]");
+          if (!host) return;
+          const open = host.classList.toggle("open");
+          (head || host).setAttribute("aria-expanded", String(open));
+        });
+        document.addEventListener("keydown", (ev) => {
+          if (!_isPhone() || (ev.key !== "Enter" && ev.key !== " ")) return;
+          const head = ev.target instanceof Element ? ev.target.closest("[data-fold] > .fold-head") : null;
+          if (!head) return;
+          ev.preventDefault();
+          head.click();
+        });
+        // Fold headings act as buttons only on phones.
+        function _syncFoldHeads() {
+          document.querySelectorAll("[data-fold] > .fold-head").forEach((h) => {
+            if (_isPhone()) {
+              h.setAttribute("role", "button");
+              h.setAttribute("tabindex", "0");
+              h.setAttribute("aria-expanded", String(h.parentElement.classList.contains("open")));
+            } else {
+              h.removeAttribute("role");
+              h.removeAttribute("tabindex");
+              h.removeAttribute("aria-expanded");
+            }
+          });
+        }
+        if (_phoneMq.addEventListener) _phoneMq.addEventListener("change", _syncFoldHeads);
+        else if (_phoneMq.addListener) _phoneMq.addListener(_syncFoldHeads);
+        document.addEventListener("DOMContentLoaded", _syncFoldHeads);
         if (typeof Chart !== "undefined") Chart.defaults.font.family = _tc().font;
 
         // ── Overview KPI cards (real data only) ───────────────────────────
@@ -2017,6 +2274,16 @@
           return unit === "%" ? `${formatted}%` : `${formatted} ${unit}`;
         }
 
+        // Threshold labels on phone-width charts: "Top 75", not "Top 75.00 0-100".
+        function _formatChartValueShort(value, unit) {
+          if (value === null || value === undefined) return "—";
+          const n = Number(value);
+          if (Number.isNaN(n)) return "—";
+          const a = Math.abs(n);
+          const s = String(+n.toFixed(a >= 100 ? 0 : a >= 10 ? 1 : 2));
+          return unit === "%" ? `${s}%` : s;
+        }
+
         function _parseDateLabel(label) {
           if (!label) return null;
           const parts = String(label).split("-");
@@ -2032,16 +2299,18 @@
           return showYear ? `${curr.y}-${curr.m}-${curr.d}` : `${curr.m}-${curr.d}`;
         }
 
-        function _getTickIndexes(total) {
-          if (total <= 5) {
+        function _getTickIndexes(total, n = 5) {
+          if (total <= n) {
             return new Set(Array.from({ length: total }, (_, i) => i));
           }
           const idx = new Set();
-          for (let i = 0; i < 5; i += 1) {
-            idx.add(Math.round(i * (total - 1) / 4));
+          for (let i = 0; i < n; i += 1) {
+            idx.add(Math.round(i * (total - 1) / (n - 1)));
           }
           return idx;
         }
+        // Phone-width charts get 3 date ticks instead of 5 (labels overlapped).
+        function _tickCount(chart) { return chart && chart.width < 440 ? 3 : 5; }
 
         // Dashed vertical line follows the tooltip x-position, mirroring
         // the axisPointer in the ECharts market chart.
@@ -2073,6 +2342,7 @@
             if (!chartArea || !scales || !scales.y) return;
             const yScale = scales.y;
             const xRight = chartArea.right - 6;
+            const _fmtV = chart.width < 440 ? _formatChartValueShort : _formatChartValue;
             const boxes = [];
 
             ctx.save();
@@ -2135,7 +2405,7 @@
 
             if (opts && opts.top !== null && opts.top !== undefined && !Number.isNaN(opts.top)) {
               _placeLabel(
-                `Top ${_formatChartValue(opts.top, opts.unit)}`,
+                `Top ${_fmtV(opts.top, opts.unit)}`,
                 opts.top,
                 _tc().bear
               );
@@ -2143,7 +2413,7 @@
 
             if (opts && opts.bottom !== null && opts.bottom !== undefined && !Number.isNaN(opts.bottom)) {
               _placeLabel(
-                `Bottom ${_formatChartValue(opts.bottom, opts.unit)}`,
+                `Bottom ${_fmtV(opts.bottom, opts.unit)}`,
                 opts.bottom,
                 _tc().bull
               );
@@ -2154,7 +2424,7 @@
               const hi = Math.max(opts.topZone[0], opts.topZone[1]);
               const lo = Math.min(opts.topZone[0], opts.topZone[1]);
               _placeLabel(
-                `Top zone ${_formatChartValue(lo, opts.unit)} – ${_formatChartValue(hi, opts.unit)}`,
+                `Top zone ${_fmtV(lo, opts.unit)} – ${_fmtV(hi, opts.unit)}`,
                 hi,
                 _tc().bear
               );
@@ -2163,7 +2433,7 @@
               const hi = Math.max(opts.bottomZone[0], opts.bottomZone[1]);
               const lo = Math.min(opts.bottomZone[0], opts.bottomZone[1]);
               _placeLabel(
-                `Bottom zone ${_formatChartValue(lo, opts.unit)} – ${_formatChartValue(hi, opts.unit)}`,
+                `Bottom zone ${_fmtV(lo, opts.unit)} – ${_fmtV(hi, opts.unit)}`,
                 lo,
                 _tc().bull
               );
@@ -2180,7 +2450,7 @@
                   x = lastPoint.x - 6;
                   align = "right";
                 }
-                let text = `Latest ${_formatChartValue(opts.latest, opts.unit)}`;
+                let text = `Latest ${_fmtV(opts.latest, opts.unit)}`;
                 let box = _boxForText(x, y, text, align);
                 if (!_fits(box)) {
                   y = lastPoint.y - 10;
@@ -2833,7 +3103,7 @@
               axisTick: { show: false },
             },
             yAxis: {
-              type: "value", scale: true, splitNumber: 5,
+              type: "value", scale: true, splitNumber: _narrowChart("stock-detail-chart") ? 3 : 5,
               axisLine: { show: false },
               axisLabel: { color: T.muted, fontSize: 12 },
               splitLine: { lineStyle: { color: T.grid } },
@@ -2913,6 +3183,7 @@
         function renderStockNews(container, data) {
           if (!container) return;
           container.innerHTML = "";
+          _mFold(container, [], "", null);
           const heading = document.createElement("h3");
           heading.textContent = "Recent News (last 30 days)";
           container.appendChild(heading);
@@ -2949,10 +3220,13 @@
             const summary = (a.summary || "").slice(0, 240);
             item.innerHTML = `
               <a href="${link}" target="_blank" rel="noopener">${title}</a>
-              <div class="news-meta">${src}${src && when ? " · " : ""}${when}${summary ? "<br>" + summary : ""}</div>
+              <div class="news-meta">${src}${src && when ? " · " : ""}${when}${summary ? `<span class="news-sum" data-m-toggle>${summary}</span>` : ""}</div>
             `;
             container.appendChild(item);
           }
+          // Phones: the first three stories, the rest behind a button.
+          const extra = Array.from(container.querySelectorAll(".news-item")).slice(3);
+          _mFold(container, extra, `Show ${extra.length} more stor${extra.length === 1 ? "y" : "ies"}`, null);
         }
 
         function initStockDetail() {
@@ -3175,7 +3449,7 @@
                       maxRotation: 0,
                       minRotation: 0,
                       callback: function(value, index, ticks) {
-                        const shown = _getTickIndexes(ticks.length);
+                        const shown = _getTickIndexes(ticks.length, _tickCount(this.chart));
                         if (!shown.has(index)) return "";
                         const label = this.getLabelForValue(value);
                         let prevLabel = null;
@@ -3191,7 +3465,7 @@
                     grid: {
                       color: (ctx) => {
                         const total = ctx.scale.ticks.length;
-                        const shown = _getTickIndexes(total);
+                        const shown = _getTickIndexes(total, _tickCount(ctx.chart));
                         return shown.has(ctx.index) ? T.grid : "rgba(0,0,0,0)";
                       },
                     },
@@ -3261,7 +3535,7 @@
           const rows = Array.from(document.querySelectorAll(".indicator-row"));
           if (!rows.length) return;
           rows.forEach(row => {
-            row.addEventListener("click", () => {
+            row.addEventListener("click", (ev) => {
               rows.forEach(r => r.classList.remove("active"));
               row.classList.add("active");
               const id = row.getAttribute("data-indicator-id");
@@ -3270,6 +3544,12 @@
                 currentIndicatorId = id;
                 currentIndicatorName = name || id;
                 loadIndicatorHistory(currentIndicatorId, currentIndicatorName, currentRangeDays);
+                // Phones: the chart sits above this table, so bring it into view
+                // (only for real taps, not the automatic first-row click).
+                if (ev && ev.isTrusted && _isPhone()) {
+                  const card = document.querySelector(".trend-card");
+                  if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
               }
             });
           });
@@ -3569,7 +3849,7 @@
           const titleEl = document.getElementById("index-detail-title");
           if (titleEl) {
             const niceName = meta ? `${meta.name} (${meta.country})` : stooqSymbol;
-            titleEl.textContent = `Index Detail — ${niceName}`;
+            titleEl.innerHTML = `<span class="d-only">Index Detail — </span>${_escHtml(niceName)}`;
           }
           loadIndexHistory(currentDetailSymbol, currentDetailRange);
         }
@@ -3580,6 +3860,7 @@
           if (!stooqSymbol) return;
           if (metaEl) metaEl.textContent = "Loading...";
           if (newsEl) newsEl.innerHTML = '<div class="empty" style="grid-column: 1; padding: 0;">Loading significant moves...</div>';
+          _mFold(newsEl, [], "", null);
           try {
             const resp = await fetch(`${window.API_BASE||""}/api/index-history?symbol=${encodeURIComponent(stooqSymbol)}&range=${encodeURIComponent(range)}`);
             if (!resp.ok) {
@@ -3713,7 +3994,7 @@
             yAxis: {
               type: "value",
               scale: true,
-              splitNumber: 5,
+              splitNumber: _narrowChart("index-detail-chart") ? 3 : 5,
               axisLine: { show: false },
               axisTick: { show: false },
               axisLabel: { color: T.muted, fontSize: 12, margin: 12 },
@@ -3771,7 +4052,9 @@
             el.innerHTML = '<div class="empty" style="grid-column: 1; padding: 0;">No outsized moves in the selected range.</div>';
             return;
           }
-          const items = sig.map(s => {
+          // Newest move first.
+          const ordered = sig.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+          const items = ordered.map(s => {
             const headlinesHtml = (s.news || []).slice(0, 3).map(a => {
               const title = _escHtml(_truncate(a.title || "", 140));
               const src = a.source ? _escHtml(a.source) : "";
@@ -3787,6 +4070,9 @@
             </div>`;
           }).join("");
           el.innerHTML = items;
+          // Phones: the three newest moves, the rest behind a button.
+          const extra = Array.from(el.querySelectorAll(".news-item")).slice(3);
+          _mFold(el, extra, `Show ${extra.length} earlier move${extra.length === 1 ? "" : "s"}`, null);
         }
 
         async function showSignificantNews(dateStr) {
@@ -3810,6 +4096,8 @@
           items.forEach(item => {
             if (item.getAttribute("data-date") === dateStr) {
               item.classList.add("is-selected");
+              if (item.classList.contains("m-extra")) _mUnfold(item.parentElement);
+              if (_isPhone()) item.scrollIntoView({ behavior: "smooth", block: "nearest" });
               const extras = item.querySelectorAll(".news-extra");
               extras.forEach(e => e.remove());
               const list = (articles || []).slice(0, 8).map(a => {
@@ -3848,6 +4136,7 @@
         let wlData = { rows: [], focus: [] };
         let wlDetailChart = null;
         let wlVolChart = null;
+        let _wlNarrow = null;          // phone layout used for the last chart render
         let wlLastChartData = null;   // last /api/stock-analysis payload (theme redraw)
         let wlCurrentSymbol = null;
         let wlCurrentName = null;
@@ -3979,6 +4268,20 @@
           if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
           if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
           return String(Math.round(n));
+        }
+        // Phone metric tiles: three significant digits ("532M", "8.13B").
+        function _wlFmtVol3(v) {
+          if (!v) return "—";
+          const n = Number(v);
+          const f = (x) => x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2);
+          if (n >= 1e9) return f(n / 1e9) + "B";
+          if (n >= 1e6) return f(n / 1e6) + "M";
+          if (n >= 1e3) return f(n / 1e3) + "K";
+          return String(Math.round(n));
+        }
+        function _wlVolCell(v) {
+          const a = _wlFmtVol(v), b = _wlFmtVol3(v);
+          return a === b ? a : `<span class="d-only">${a}</span><span class="m-only">${b}</span>`;
         }
         function _wlChgClass(v) {
           if (v === null || v === undefined || Number.isNaN(Number(v))) return "";
@@ -4131,7 +4434,7 @@
                 neutral: "Above the 21 EMA but momentum is mixed — be selective.",
                 off:     "Below the 21 EMA — defensive backdrop; long setups carry lower odds.",
               };
-              return `<div class="wl-timing-tile t-${r.tier}">
+              return `<div class="wl-timing-tile t-${r.tier}" data-m-toggle>
                 <div class="wt-top">
                   <span class="wt-name">${r.name}</span>
                   <span class="wt-price">${_wlFmt(r.price)}<span class="wt-chg ${chgCls}">${_wlFmtPct(r.chg_1d_pct)}</span></span>
@@ -4303,7 +4606,6 @@
 
         async function addWatchlistSymbol() {
           const inp = document.getElementById("wl-add-symbol");
-          const noteInp = document.getElementById("wl-add-note");
           const status = document.getElementById("wl-add-status");
           const raw = (inp.value || "").trim().toUpperCase();
           status.classList.remove("err");
@@ -4314,12 +4616,11 @@
           }
           const mode = _wlMode();
           if (mode === "public") return;   // the add row is hidden when signed out
-          const note = (noteInp.value || "").trim();
           status.textContent = "Adding…";
           try {
             if (mode === "personal") {
               const { error } = await window.ptAuth.client.from("watchlist_items").insert({
-                list: "watchlist", symbol: raw, name: raw, note: note || null,
+                list: "watchlist", symbol: raw, name: raw,
                 sort_order: (wlData.rows || []).length,
               });
               if (error) {
@@ -4331,7 +4632,7 @@
               const resp = await fetch(`${window.API_BASE||""}/api/watchlist`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...(await window.ptAuth.authHeaders()) },
-                body: JSON.stringify({ symbol: raw, note }),
+                body: JSON.stringify({ symbol: raw }),
               });
               if (!resp.ok) {
                 const body = await resp.json().catch(() => ({}));
@@ -4341,7 +4642,6 @@
               }
             }
             inp.value = "";
-            noteInp.value = "";
             status.textContent = `Added ${raw}. Scoring…`;
             await loadWatchlist(false);
             // Auto-select the newly-added symbol.
@@ -4431,8 +4731,8 @@
             ["ATR",  _wlFmt(m.atr, 2),              m.atr_pct == null ? "" : `${_wlFmt(m.atr_pct, 1)}%`],
             ["RSI",  _wlFmt(m.rsi, 1),              "14-day"],
             ["VolR", m.vol_ratio == null ? "—" : _wlFmt(m.vol_ratio, 2) + "×", `Today vs prior 21d avg`],
-            ["Vol Today", _wlFmtVol(m.vol_today),   "Shares"],
-            ["Avg $ Vol", _wlFmtVol(m.dollar_vol),  "Liquidity proxy"],
+            ["Vol Today", _wlVolCell(m.vol_today),   "Shares"],
+            ["Avg $ Vol", _wlVolCell(m.dollar_vol),  "Liquidity proxy"],
           ].map(([label, value, sub]) => `<div class="kv">
             <div class="kv-label">${label}</div>
             <div class="kv-value">${value}</div>
@@ -4445,19 +4745,19 @@
             const rr = m.risk != null ? (3).toFixed(0) : "3";
             pb.innerHTML = `
               <div class="pb-cell stop">
-                <div class="pb-label">Suggested Stop</div>
+                <div class="pb-label"><span class="pb-more">Suggested </span>Stop</div>
                 <div class="pb-value">${_wlFmt(m.stop)}</div>
-                <div class="kv-sub" style="color: var(--muted);">-${_wlFmt(m.stop_pct, 2)}% · risk ${_wlFmt(m.risk)}</div>
+                <div class="kv-sub" style="color: var(--muted);">-${_wlFmt(m.stop_pct, 2)}%<span class="pb-more"> · risk ${_wlFmt(m.risk)}</span></div>
               </div>
               <div class="pb-cell tp1">
-                <div class="pb-label">TP1 (+3R · trim 1/4 – 1/3)</div>
+                <div class="pb-label">TP1<span class="pb-more"> (+3R · trim 1/4 – 1/3)</span></div>
                 <div class="pb-value">${_wlFmt(m.tp1)}</div>
-                <div class="kv-sub" style="color: var(--muted);">Move stop to breakeven</div>
+                <div class="kv-sub" style="color: var(--muted);"><span class="pb-less">+3R</span><span class="pb-more">Move stop to breakeven</span></div>
               </div>
               <div class="pb-cell tp2">
-                <div class="pb-label">TP2 (+5R · trim again)</div>
+                <div class="pb-label">TP2<span class="pb-more"> (+5R · trim again)</span></div>
                 <div class="pb-value">${_wlFmt(m.tp2)}</div>
-                <div class="kv-sub" style="color: var(--muted);">Trail remainder by EMA 8 / 21</div>
+                <div class="kv-sub" style="color: var(--muted);"><span class="pb-less">+5R</span><span class="pb-more">Trail remainder by EMA 8 / 21</span></div>
               </div>`;
           } else {
             pb.innerHTML = `<div class="pb-cell" style="grid-column: 1/-1; color: var(--muted); text-align: center;">No price data — plan unavailable.</div>`;
@@ -4517,6 +4817,12 @@
           window.addEventListener("resize", () => {
             try { wlDetailChart && wlDetailChart.resize(); } catch (e) {}
             try { wlVolChart && wlVolChart.resize(); } catch (e) {}
+            // Crossing the phone width (rotation, window resize) changes the
+            // legend/axis layout, so rebuild the options while visible.
+            const box = document.getElementById("wl-detail-chart");
+            if (wlLastChartData && box && box.clientWidth > 0 && (box.clientWidth < 560) !== _wlNarrow) {
+              try { renderWatchlistChart(wlLastChartData); } catch (e) {}
+            }
             _wlSyncHeights();
           });
           // Auto-relock left-card heights whenever the right-hand cards change.
@@ -4577,7 +4883,14 @@
             overlaySeries.push({
               name, type: "line", data: flatLine(val), showSymbol: false,
               lineStyle: { color, type: dash, width: 1 }, itemStyle: { color }, silent: true,
-              endLabel: { show: true, formatter: `${name} ${val}`, color, fontSize: 11 },
+              // Phones have no right margin to spare: the label sits just
+              // above the line's right end instead of past it.
+              endLabel: _narrowChart("wl-detail-chart")
+                ? { show: true, formatter: `${name} ${val}`, color, fontSize: 11, align: "right", offset: [-6, -9] }
+                : { show: true, formatter: `${name} ${val}`, color, fontSize: 11 },
+              // Close levels (e.g. TP1/TP2 on a wide price range) would print
+              // their labels on top of each other; nudge them apart.
+              labelLayout: { moveOverlap: "shiftY" },
               emphasis: { disabled: true },
             });
           };
@@ -4640,20 +4953,38 @@
             return v.slice(0, 7); // YYYY-MM
           };
 
+          // Phones: the legend gets two fixed rows (it used to wrap onto the
+          // price axis), fewer axis labels, dates only under the volume pane
+          // and a thumb-sized zoom bar. On touch screens a one-finger drag
+          // scrolls the page instead of panning the chart (pinch still zooms).
+          const narrow = _narrowChart("wl-detail-chart");
+          const touch = window.matchMedia("(pointer: coarse)").matches;
+          _wlNarrow = narrow;
+          const volAxisFmt = (v) => {
+            const n = Number(v);
+            if (!n) return "";
+            if (n >= 1e9) return +(n / 1e9).toFixed(n >= 1e10 ? 0 : 1) + "B";
+            if (n >= 1e6) return +(n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
+            if (n >= 1e3) return +(n / 1e3).toFixed(0) + "K";
+            return String(Math.round(n));
+          };
+
           wlDetailChart.setOption({
             backgroundColor: "transparent",
             animation: false,
             textStyle: { fontFamily: T.font },
             legend: {
               show: true, top: 0, left: "center",
-              itemWidth: 18, itemHeight: 2, itemGap: 12,
-              textStyle: { color: T.muted, fontSize: 12 },
+              itemWidth: narrow ? 14 : 18, itemHeight: 2, itemGap: narrow ? 10 : 12,
+              textStyle: { color: T.muted, fontSize: narrow ? 11.5 : 12 },
               inactiveColor: T.faint,
-              data: ["EMA 8", "EMA 21", "EMA 50", "Pattern", "Stop", "TP1", "TP2", "Pivot"],
+              // "" starts a new legend row: EMAs first, then the levels.
+              data: ["EMA 8", "EMA 21", "EMA 50", "Pattern", ...(narrow ? [""] : []), "Stop", "TP1", "TP2", "Pivot"],
               selected: { "Stop": false, "TP1": false, "TP2": false, "Pivot": false },
             },
             tooltip: _ecTip(T, {
               trigger: "axis",
+              confine: narrow,
               axisPointer: { type: "cross", lineStyle: { color: T.faint, type: "dashed" } },
               formatter: (params) => {
                 if (!params || !params.length) return "";
@@ -4681,22 +5012,24 @@
                 return html;
               },
             }),
-            grid: { left: 55, right: 52, top: 30, bottom: 28 },
+            grid: narrow ? { left: 44, right: 12, top: 48, bottom: 8 } : { left: 55, right: 52, top: 30, bottom: 28 },
             dataZoom: [
-              { type: "inside", xAxisIndex: [0], filterMode: "filter" },
+              { type: "inside", xAxisIndex: [0], filterMode: "filter", moveOnMouseMove: !touch },
             ],
             xAxis: {
               type: "category", data: dates,
               axisLine: { lineStyle: { color: T.axis } },
-              axisLabel: { color: T.muted, fontSize: 12, hideOverlap: true,
+              axisLabel: { show: !narrow, color: T.muted, fontSize: 12, hideOverlap: true,
                 formatter: xLabelFmt },
               splitLine: { show: false },
               axisTick: { show: false },
             },
             yAxis: {
-              type: "value", scale: true, splitNumber: 5,
+              // Phones: ~4 price labels; the bottom one would sit on the
+              // volume pane's top label.
+              type: "value", scale: true, splitNumber: narrow ? 3 : 5,
               axisLine: { show: false },
-              axisLabel: { color: T.muted, fontSize: 12 },
+              axisLabel: { color: T.muted, fontSize: narrow ? 11 : 12, ...(narrow ? { showMinLabel: false } : {}) },
               splitLine: { lineStyle: { color: T.grid } },
             },
             series: [
@@ -4739,14 +5072,21 @@
                 return html;
               },
             }),
-            grid: { left: 55, right: 52, top: 6, bottom: 40 },
+            grid: narrow ? { left: 44, right: 12, top: 12, bottom: 70 } : { left: 55, right: 52, top: 6, bottom: 40 },
             dataZoom: [
-              { type: "inside", xAxisIndex: [0], filterMode: "filter" },
-              { type: "slider", xAxisIndex: [0], height: 16, bottom: 6,
+              { type: "inside", xAxisIndex: [0], filterMode: "filter", moveOnMouseMove: !touch },
+              { type: "slider", xAxisIndex: [0], height: narrow ? 32 : 16, bottom: narrow ? 4 : 6,
                 brushSelect: false, borderColor: T.border,
                 fillerColor: _alpha(T.brand, 0.18),
                 handleStyle: { color: T.brandInk, borderColor: T.brandInk },
                 moveHandleStyle: { color: T.brandInk },
+                // Phones: wide rounded grips a thumb can catch.
+                ...(narrow ? {
+                  handleIcon: "path://M4,0h8a4,4,0,0,1,4,4v24a4,4,0,0,1-4,4h-8a4,4,0,0,1-4-4v-24a4,4,0,0,1,4-4z",
+                  handleSize: "100%",
+                  handleStyle: { color: T.bg, borderColor: T.brandInk, borderWidth: 1.5 },
+                  moveHandleSize: 10,
+                } : {}),
                 dataBackground: { lineStyle: { color: T.axis }, areaStyle: { color: T.surface } },
                 selectedDataBackground: { lineStyle: { color: T.chart }, areaStyle: { color: _alpha(T.chart, 0.14) } },
                 textStyle: { color: T.muted, fontSize: 10 } },
@@ -4754,16 +5094,17 @@
             xAxis: {
               type: "category", data: dates,
               axisLine: { lineStyle: { color: T.axis } },
-              axisLabel: { color: T.muted, fontSize: 11, hideOverlap: true,
+              axisLabel: { color: T.muted, fontSize: narrow ? 10.5 : 11, hideOverlap: true,
                 formatter: xLabelFmt },
               splitLine: { show: false },
               axisTick: { show: false },
             },
             yAxis: {
-              type: "value", scale: true,
+              // Phones: two labels from zero ("300M", "600M"), not six.
+              type: "value", scale: !narrow, ...(narrow ? { splitNumber: 2 } : {}),
               axisLine: { show: false },
-              axisLabel: { color: T.muted, fontSize: 11,
-                formatter: (v) => _wlFmtVol(v) },
+              axisLabel: { color: T.muted, fontSize: narrow ? 10.5 : 11,
+                formatter: volAxisFmt },
               splitLine: { lineStyle: { color: T.grid } },
             },
             series: [
@@ -5203,7 +5544,7 @@
               tr.className = "indicator-row";
               tr.dataset.indicatorId = r.id;
               tr.dataset.indicatorName = r.name;
-              tr.innerHTML = `<td class="ind-name">${r.name}</td><td class="ind-val ${tone}">${r.value !== null && r.value !== undefined ? r.value : "—"}</td><td class="ind-status">${status}</td><td class="ind-date">${r.as_of || "—"}</td><td class="ind-src">${srcCell}</td>`;
+              tr.innerHTML = `<td class="ind-name"><span class="d-only">${r.name}</span><span class="m-only">${_indShort(r.id, r.name)}</span></td><td class="ind-val ${tone}">${r.value !== null && r.value !== undefined ? r.value : "—"}</td><td class="ind-status">${status}</td><td class="ind-date">${r.as_of || "—"}</td><td class="ind-src">${srcCell}</td>`;
               tbody.appendChild(tr);
             }
             // Re-attach click handlers for indicator chart
@@ -5260,7 +5601,9 @@
                   const tr = document.createElement("tr");
                   const topPill  = s.top    ? '<span class="pill bear">Top</span>'    : '<span class="pill neutral">—</span>';
                   const botPill  = s.bottom ? '<span class="pill bull">Bottom</span>' : '<span class="pill neutral">—</span>';
-                  tr.innerHTML = `<td style="text-align:center;">${i+1}</td><td>${s.title}</td><td>${topPill}</td><td>${botPill}</td><td class="meta">${s.detail}</td>`;
+                  tr.setAttribute("data-m-toggle", "");
+                  tr.dataset.state = s.top ? "top" : s.bottom ? "bottom" : "none";
+                  tr.innerHTML = `<td class="sg-no" style="text-align:center;">${i+1}</td><td class="sg-name"><span class="d-only">${s.title}</span><span class="m-only">${_indShort(s.indicator_id, s.title)}${SG_CHEV}</span></td><td class="sg-top">${topPill}</td><td class="sg-bot">${botPill}</td><td class="sg-desc meta">${s.detail}</td>`;
                   tbody.appendChild(tr);
                 });
               }
@@ -5316,6 +5659,11 @@
                 }).join("");
                 drivers.innerHTML = `<div class="panel-head"><div><h2 class="panel-title">Regime Drivers</h2><div class="panel-sub">Points each indicator adds to the score (+ buy, − risk)</div></div></div>
   <div class="drivers-list">${rows || '<div class="meta" style="padding:12px 0;">No indicator is in a signal zone right now.</div>'}</div>`;
+                // Phones: rows adding no points fold behind a button.
+                const zeroRows = Array.from(drivers.querySelectorAll(".driver-row.is-zero"));
+                const scoring = drivers.querySelectorAll(".driver-row:not(.is-zero)").length;
+                const folded = scoring ? zeroRows : [];
+                _mFold(drivers.querySelector(".drivers-list"), folded, `Show ${folded.length} at 0 points`, "drivers");
               }
 
               // Compact copy of the score for the phone header (hidden on desktop).
@@ -5335,6 +5683,7 @@
 
       <footer class="site-footer">
         <div class="footer-brand">kiwiboard · A fresh cut of the market.</div>
+        <button type="button" class="footer-more" aria-expanded="false">Sources &amp; contact</button>
         <div class="footer-sources">
           Indicator Sources:
           <a href="https://tradingeconomics.com/united-states/bofa-merrill-lynch-us-high-yield-option-adjusted-spread-fed-data.html" target="_blank" rel="noopener">US HY OAS</a> /

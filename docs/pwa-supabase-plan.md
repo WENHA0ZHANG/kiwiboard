@@ -1,0 +1,253 @@
+# Poor Trader → PWA + Google 登录 + 推送：实施方案
+
+## 原则
+
+- **不登录照常可用**：poortrader.com 现在的体验保持不变。用 Google 登录后才多出两样：自己的 Watchlist 云同步、Poor2Rich 档位推送。
+- **数据分工**：市场数据继续放在 Cloudflare Worker + D1；用户数据（自选股、提醒偏好、设备订阅）放 Supabase，靠 RLS 让每个用户只能读写自己的行。
+- **先上预览环境**：新功能先部署到 Pages 预览分支 / staging Worker，确认没问题再推到 production。
+
+## 架构
+
+```
+ 手机/电脑 (PWA)                    Supabase (free)                     Cloudflare
+ ┌──────────────────┐  Google 登录   ┌──────────────────────┐            ┌───────────────────────────┐
+ │ index.html       │ ─────────────▶ │ Auth (Google OAuth)  │            │ Worker poor-trader-api    │
+ │ + supabase-js    │  anon key+JWT  │ Postgres + RLS       │ ◀───────── │ cron */30:                │
+ │ + sw.js          │ ─────────────▶ │  watchlist_items     │ service_   │  1 抓指标 → D1            │
+ │   (push 显示)     │                │  notification_prefs  │ role key   │  2 算 Poor2Rich 档位      │
+ └────────▲─────────┘                │  push_subscriptions  │            │  3 档位变了 → 查订阅       │
+          │                          │  notification_log    │            │  4 Web Push (VAPID)       │
+          │ 通知                      └──────────────────────┘            └─────────────┬─────────────┘
+          └──────────── Push 服务 (Apple / Google FCM / Mozilla) ◀────────────────────────┘
+```
+
+## 已完成
+
+- 备份分支 `backup/pre-pwa-2026-11-26`：线上正在跑的版本，含当时未提交的改动。
+- PWA 基础：`cloudflare/pages/manifest.webmanifest`、`sw.js`、猕猴桃图标（favicon / iOS / Android maskable / 通知徽章），以及 `index.html` 里的 head 标签和 service worker 注册。
+- `secrets/supabase.env`：已被 gitignore，存 DB 密码，以及之后要填的各种 key。
+- `supabase/schema.sql`：表、RLS 策略、RPC，可以直接贴进 SQL Editor 运行。
+
+## 你需要在控制台做的（一次性）
+
+1. **Supabase**：新建项目（free）。把 Project URL 和 Publishable key（`sb_publishable_…`，就是原来的 anon key）填进 `secrets/supabase.env`；Secret key 等做推送时再填。
+2. **Supabase → SQL Editor**：运行 `supabase/schema.sql`。
+3. **Google Cloud Console → APIs & Services**
+   - OAuth consent screen：选 External，scopes 用 `email`、`profile`、`openid`，然后 **Publish**。不发布的话只有测试用户能登录。只用这些基础 scope，一般不需要 Google 审核。
+   - Credentials → Create OAuth client ID → 类型选 Web application。
+     - Authorized redirect URI：`https://<project-ref>.supabase.co/auth/v1/callback`
+4. **Supabase → Authentication → Sign In / Providers → Google**：打开，填入 Client ID 和 Secret。
+5. **Supabase → Authentication → URL Configuration**
+   - Site URL：`https://poortrader.com`
+   - Redirect URLs：用精确地址，生产环境不建议用 `**`。代码里登录完回到的就是站点根路径 `/`。
+     - `https://poortrader.com/`
+     - `https://*.poor-trader-dashboard.pages.dev/`（预览部署用；`*` 只匹配一段子域名）
+     - `http://localhost:8788/`（本地测试用）
+   - 同一页的 **Providers → Email** 建议关掉，只保留 Google，避免有人用邮箱注册冒充。
+6. **把 Project URL 和 anon key 填到两处**（这两个值本来就是公开的，可以提交到 git）：
+   - `cloudflare/pages/index.html` 底部的 `window.SUPABASE_URL` 和 `window.SUPABASE_ANON_KEY`。
+   - `cloudflare/worker/wrangler.toml` 里 `[vars]` 的 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`。
+7. **设管理员**：只有管理员能编辑公共 Watchlist。这一项是 secret，不写进 toml：
+
+   ```bash
+   cd cloudflare/worker && npx wrangler secret put ADMIN_EMAILS
+   ```
+
+   提示输入时填你的 Gmail，多个邮箱用逗号分隔。
+
+## 分阶段实施
+
+### Phase 1：PWA 上线 + 手机布局（不动后端）
+
+先部署到预览地址，production 不受影响：
+
+```bash
+cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-trader-dashboard --branch pwa
+```
+
+预览地址是 `https://pwa.poor-trader-dashboard.pages.dev`。
+
+**手机布局已完成（2026-11-26，本地，未部署）**。所有样式都写在 `index.html` 末尾的媒体查询里，≥1100px 的桌面布局和改动前逐项对比一致。
+
+- **≤720px（手机）**
+  - 底部 tab bar（图标 + 短标签），适配 iPhone 底部安全区。
+  - 页头显示 Regime 分数小标签（Prediction 页隐藏，因为那一页本身就以 Regime 卡片开头）。
+  - 宽表格在卡片内横向滑动，首列固定。
+  - 去掉的列：Market 页的 Date 列、指标表的 Source 列。
+  - 图表高度调矮。
+  - 输入框字号设为 16px，防止 iOS 聚焦时自动放大页面。
+  - 切换 tab 时回到顶部（关闭了会把页面往下拖的滚动锚定）。
+- **≤1099px（单列布局，包括平板）**
+  - Market Regime 卡片排在最前。
+  - 隐藏导航栏时钟和 tab 编号（原来这一排会超出屏幕）。
+- **顺手修复**：卡片标题里浮动的 meta 会挤窄 Market Timing 卡片，用 `display: flow-root` 解决。
+- **验证**：在 360、390、820 三个宽度下，5 个页面都没有横向溢出。
+
+**安装引导已完成（2026-11-26，本地，未部署）**
+
+- **Android / Chrome / Edge**：捕获 `beforeinstallprompt`，手机和平板上弹出底部横幅「Install」，点了调用原生安装。
+- **iOS**：横幅提示「点分享 → 添加到主屏幕」。
+- **微信、Instagram 等内置浏览器**：提示「用 Safari / Chrome 打开」。
+- **其他行为**：
+  - 关掉横幅后 14 天内不再自动弹出，页头的「Install app」链接一直可以用。
+  - 已安装的 App 里不显示任何安装提示。
+  - 桌面 Chrome 只在页头显示链接，不弹横幅。
+
+### Phase 2：Google 登录 + 个人 Watchlist（代码已完成，2026-11-26，本地，未部署）
+
+- **登录**：
+  - supabase-js 锁定在 2.118.0，从 CDN 加载并做 SRI 校验，`flowType: 'pkce'`。
+    - 必须用 PKCE：网站的 tab 用 `#hash` 路由，implicit flow 会把 `#access_token=…` 塞进 hash，两者冲突。
+  - 只有填了 `SUPABASE_URL` 才会加载 supabase-js；没填时网站和原来完全一样。
+  - 登录回来后会回到出发时的那个 tab。
+  - 页头：未登录显示「Sign in with Google」；登录后显示头像、名字和「Sign out」，管理员多一个 admin 标记。
+- **Watchlist 三种模式**（`window.ptAuth.listMode`）：
+
+  | 模式 | 适用对象 | 列表 | 能做什么 |
+  | --- | --- | --- | --- |
+  | `public` | 未登录 | 公共列表 | 只读：没有添加框、删除按钮和拖拽，显示「Sign in」提示 |
+  | `personal` | 普通用户 | 自己的列表，存在 Supabase `watchlist_items`（RLS） | 增、删、拖拽排序；排序走 `reorder_watchlist` RPC |
+  | `admin` | ADMIN_EMAILS 里的用户 | 公共列表 | 编辑，Worker 会校验 token |
+
+  - 个人列表为空时，可以一键「复制公共列表」。
+- **Worker**：
+  - `GET /api/watchlist?symbols=A,B,…` 给个人列表打分，用的是所有用户共享的缓存。
+  - 每次请求最多新算 12 个，剩下的放在 `pending` 里，前端最多轮询 8 次。
+  - 个人列表的数据超过 30 分钟会重新计算。
+  - 新增 `GET /api/me`，返回当前用户是否是管理员。
+- **安全修复**：
+  - `POST/DELETE /api/watchlist`、`/reorder`、`POST /api/watchlist/refresh` 现在都要求 Supabase 登录，并且邮箱在 `ADMIN_EMAILS` 里。
+  - `?refresh=1` 每个 IP 2 分钟最多一次，超过就直接返回缓存。
+  - 原来这些写接口任何人都能调用。
+- **部署后、填好配置前的状态**：没有人能通过网页编辑公共列表，包括你自己。需要的话可以用 `wrangler d1 execute` 编辑。
+- **还没做**：Market 页的 Stocks 列表（目前存在 localStorage）同步到账号。`watchlist_items.list = 'market'` 已经预留。
+
+### Phase 3：Poor2Rich 档位推送（2026-11-26 已部署：Worker `5e16764e`，Pages `b982715b`）
+
+已实现的部分（按下面的设计）：
+
+- **Worker 新模块**：
+  - `lib/webpush.ts`：VAPID 和 aes128gcm 加密，只用 WebCrypto。用 `node scripts/test-webpush.mjs` 对照 RFC 8291 附录 A 的测试数据逐字节验证过。
+  - `lib/alerts.ts`：档位状态机，和档位要连续出现 2 次才算变化、同档 12 小时内不重复两条防抖规则。
+  - `lib/supabase.ts`：用 secret key 访问 Supabase。
+- **cron**：每 30 分钟在指标入库后执行 `checkRegimeAlert`。部署后第一次运行只记录基准，不推送。
+- **测试接口**：`POST /api/push/test`，需要登录，只发给调用者自己的设备，每人每分钟最多一次。
+- **前端**：
+  - Regime 卡片上有「Alerts」按钮（扁平铃铛图标），登录后点页头头像，菜单里有「Regime alerts」，都会打开提醒设置对话框。
+  - 对话框里可以开关本设备的推送、勾选档位、发测试通知。
+  - 退出登录时会自动关掉这台设备的提醒。
+- **配置**：
+  - VAPID 公钥放在 `index.html` 和 `wrangler.toml`，私钥是 Worker secret `VAPID_PRIVATE_KEY`（已设置）。
+  - `SUPABASE_SECRET_KEY` 已设置。
+- **推送标题**：「Market regime: Buy (+4.7)」，不带 emoji（KiwiBoard 风格）。
+
+原设计：
+
+- **VAPID 密钥**：本地用 Node 自带的 crypto 生成，不需要第三方服务。公钥放前端，私钥用 `wrangler secret put VAPID_PRIVATE_KEY` 存。
+- **前端**：
+  1. 用户点「🔔 开启提醒」按钮，在这个点击里调用 `Notification.requestPermission()`（必须由用户手势触发）。
+  2. 调用 `pushManager.subscribe`。
+  3. 调用 `rpc('save_push_subscription')` 保存订阅。
+  4. 设置里可以勾选要接收的档位，默认 Strong Buy、Buy、Cautious Buy、Risk、Strong Risk。
+- **Worker cron**（现有的 `*/30`，在指标写入 D1 之后执行）：
+  1. 调用 `computeMarketRegime` 得到当前档位。
+  2. 和 D1 `kv_store` 里「上次通知的档位」比较。
+  3. 防抖：新档位要连续 2 次 tick（1 小时）都一样才算数；同一个档位 12 小时内不重复推送。
+  4. 档位变了，并且新档位在提醒列表里：调用 `rpc('regime_alert_targets', {p_label})` 取收件人，然后发 Web Push。用 WebCrypto 实现 VAPID + aes128gcm，不引入 npm 依赖。
+  5. Push 服务返回 404 或 410 时，删掉对应订阅。每次推送都写入 `notification_log`。
+- **推送内容示例**：标题「📈 Poor2Rich → Buy (+5.2)」，正文「Cautious Buy → Buy · VIX 30.6, F&G 13.7 …」，点开跳到 `/#prediction`。
+- **开关**：用环境变量 `PUSH_ENABLED` 控制。先在 staging Worker 上用手动触发的测试接口验证，再对 production 打开。
+- **以后可以扩展**：个股提醒，比如 focus_score ≥ 4、形态突破。`notification_log.kind` 已经预留了。
+
+## KiwiBoard 视觉改版（2026-11-26 已部署）
+
+按 `KiwiBoard-design-updated.zip` 的设计规范改版，只改视觉，没有改任何计算、信号阈值、接口或刷新频率。
+
+- **名字**：显示名「Poor KiwiBoard」（域名暂时还是 poortrader.com）。manifest 的 `short_name` 和 iOS 主屏幕名是「KiwiBoard」，因为「Poor KiwiBoard」在主屏幕会被截断。
+- **图标**：只有页头「Poor KiwiBoard」旁边用 Kiwi Slice 标志（内联 SVG，颜色跟随主题）；favicon、App 图标、安装横幅、推送通知仍然用原来的半个猕猴桃。
+- **主题**：浅色（纯白）/ 深色（中性炭灰，不带绿色调），页头按钮切换，选择存在 `localStorage` 的 `kb.theme`；没选过就跟随系统。图表在切换时用新颜色重画；当时不在屏幕上的图表，等切到那个 tab 再重画（隐藏状态下重画会让世界地图的标记错位）。
+- **字体**：Inter（Google Fonts），数字用等宽数字。
+- **Overview 页**：大标题 + 4 个 KPI（S&P 500、Nasdaq、VIX、Fear & Greed，全部真实数据）+ 指标走势图 + Market Regime 面板（分数、7 段刻度、Top/Bottom signals、可展开的档位阈值）+ Key Indicators 表（新增 Status 列）+ Regime Drivers。手机和平板上 Market Regime 仍然排在最前面。
+- **页头**：「● Live / Delayed / Offline」按数据更新时间判断（45 分钟内算 Live）；登录前只显示「Sign in」，登录后是头像，点开菜单里有 Regime alerts 和 Sign out，不再显示 admin 标记。
+- **手机**：保留底部 tab 栏（PWA 更顺手），图标换成统一的细线图标。
+
+### 第二轮调整（2026-11-26 已部署：Worker `6d27fc5c`，Pages `02c9f128`）
+
+- **名字**：改成全小写的 `kiwiboard`，slogan 是「A fresh cut of the market.」（Overview 副标题、页脚、manifest 描述）。主屏幕名也是 `kiwiboard`。
+- **图表**：去掉生长 / 绘制动画，所有图表统一淡入（`.kb-fade`）。
+- **Market Regime**：档位名（Buy 等）放大在上面，分数在下面。
+- **手机**：安装入口改成第一行的下载图标；底部 tab 改为 Market / Watchlist / Global / News / Signals（桌面仍显示完整名字）。
+- **Markets & News**：日期和数字不再换行；1280px 以下改为单列，表格不需要横向滚动。
+- **设置**（头像菜单 → Settings，或 Regime 卡片的 Alerts 按钮）：
+  - 账号信息和退出登录。
+  - 主题：System / Light / Dark。
+  - Regime alerts：开关、档位、测试通知。
+  - 重置个人 watchlist：只对普通用户显示，管理员编辑的是公共列表。
+  - 重置 Markets 页的 Stocks 列表：存在这台设备的 localStorage。
+  - 删除账号：要输入 DELETE 确认，通过 Worker `DELETE /api/account` 删除 Supabase 用户，所有用户表 `on delete cascade`。
+- **推送文字**：标题「Regime: Buy (+4.7)」，正文「Up from Cautious Buy」。
+- **主屏幕图标**：半个猕猴桃有暖白底 `#FBF8EE`（`apple-touch-icon-light.png`、`icon-maskable-light-*`）和深灰黑底 `#1C1C1C` 两套，页面按设备的浅色/深色模式选择 `apple-touch-icon` 和 manifest（`manifest.webmanifest` / `manifest-dark.webmanifest`）。限制：iOS 和 Android 都只在「添加到主屏幕」那一刻读取图标，装好之后不会随系统切换。
+
+### 第三轮：手机精简（2026-11-26 已部署：Pages `ec183e75`，只改了 `index.html`，Worker 不变）
+
+只在 ≤720px 生效，桌面和平板不变。375px 宽下各页高度：Market 3841→2602，Watchlist 4367→2963，Global 2694→1903，News 3278→3220（去掉了卡片内的滚动框），Signals 4950→1354。
+
+- **Watchlist K 线图（手机）**：
+  - 图例固定两行：先 EMA，再 Stop/TP。
+  - 价格轴约 4 个刻度，成交量轴只显示 300M/600M 两个。
+  - 日期只显示在成交量下面。
+  - 缩放条加粗到 32px，两端是圆角大把手。
+  - 触屏上单指拖动用来滚动页面，双指缩放图表。
+  - Stop/TP 标签画在线的右端上方，重叠时自动错开。
+  - 图下面那段说明文字在手机上隐藏。
+- **Watchlist**：
+  - 添加股票去掉了 Optional note，输入框和 Add 在同一行。已有的 note 仍会显示。
+  - 6 个周期按钮在一行。
+  - 8 个指标改成 4×2 的小格，手机上成交量显示 532M 这种 3 位有效数字。
+  - Stop / TP1 / TP2 并排显示，点一下展开完整计划。
+  - Market Timing 只显示名称、价格和状态，点一下看 EMA。
+  - Glossary 折叠。
+- **Global**：
+  - 指数新闻改为最新的在上面（桌面也是）。
+  - 手机上只显示最近 3 次异动，其余放在「Show N earlier moves」后面。
+  - 点图上的点会自动展开列表，并滚到对应那一天。
+  - 区间按钮在一行；标题去掉「Index Detail —」。
+- **Market**：
+  - Regime Drivers 只显示有分数的行，0 分的放在「Show N at 0 points」后面。
+  - Key Indicators 改成两行一条的紧凑列表，用短名；点一条会滚回上面的图。
+  - F&G 图只显示 3 个日期，阈值标签改成「Top 75」这种短写法。
+- **News**：个股新闻不再是卡片里的滚动框。默认显示 3 条，摘要截成 2 行，点一下展开。
+- **Signals**：
+  - Market Regime Algorithm 和历史顶底表默认折叠，点标题展开。
+  - Bull/Bear Alerts 每个指标一行，只有真正的 Top/Bottom 才显示标签，点一下看规则。
+- **其他**：
+  - 非 Overview 页面的副标题在手机上隐藏。
+  - 页脚的数据来源收进「Sources & contact」按钮。
+- **实现**：
+  - `data-fold`：卡片只显示标题，点标题展开。
+  - `data-m-toggle`：点一下给元素加上 `.open`。
+  - `_mFold()`：长列表加一个「Show N more」按钮。
+  - `.d-only` / `.m-only`：只在桌面或只在手机显示。
+  - 以上都只在手机宽度生效。
+
+## 平台限制
+
+- **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
+- **Supabase free**：项目 7 天没有活动会被暂停。可以让 Worker cron 每天对 Supabase 做一次轻量查询，保持活跃。
+- **Workers Free**：每次调用的 CPU 时间上限是 10ms。档位推送只需要算 1 次 + 发 N 条，用户少的时候没问题。订阅数到几百以后，改用 Queues 分批发送，或者升级到付费计划。
+- **Google 登录页**：上面显示的是 `<ref>.supabase.co`。要换成自己的域名，需要 Supabase 的付费 custom domain。
+- **密钥**：service_role key 只能放在 Worker secret 里，绝不能出现在 `index.html`。DB 密码只有 CLI 或 psql 才会用到，网站本身用不到。
+
+## 回滚
+
+- **代码**：
+  - 第三轮之前：`git checkout backup/pre-phone-pass-2026-11-26 -- cloudflare/pages/index.html`
+  - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
+  - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
+- **线上版本**：
+  - 第三轮之前：Pages `02c9f128`，Worker `6d27fc5c`。第三轮只改了 Pages，回滚只需要把 Pages 退回 `02c9f128`。
+  - 第二轮之前：Pages `b982715b`，Worker `5e16764e`（`npx wrangler rollback 5e16764e-b6ab-4ea7-8a1b-3a9fa8b9e436`）。
+  - 改版前：Pages `759dc1c8`，Worker `9310c3f9`。
+- **Pages**：Cloudflare Dashboard → Pages → Deployments → 选旧版本 → Rollback。
+- **Worker**：`npx wrangler rollback`
+- **Service worker**：如果 SW 出问题，把 `sw.js` 换成在 activate 里调用 `self.registration.unregister()` 的版本，然后重新部署。
