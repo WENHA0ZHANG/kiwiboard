@@ -19,6 +19,22 @@ crons = ["*/30 * * * *"]
 # ── Environment variables (non-secret) ────────────────────────────────────────
 [vars]
 ENVIRONMENT = "production"
+# Supabase project used for Google sign-in. Both values are public (same
+# Project URL + Publishable key `sb_publishable_…` as in pages/index.html).
+# While empty, nobody can sign in and the shared watchlist is read-only.
+SUPABASE_URL = "https://ethdmtzhgopviprocsny.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_Kc0MZm5FwdWMllnJqJ2nqA_cE5lMpno"
+# Admins (may edit the shared watchlist) are a secret, not a var:
+#   wrangler secret put ADMIN_EMAILS     e.g. "you@gmail.com"
+
+# Push alerts on Poor2Rich regime changes (sent from the cron).
+# Public half of the VAPID key pair; the private half is a secret:
+#   wrangler secret put VAPID_PRIVATE_KEY
+#   wrangler secret put SUPABASE_SECRET_KEY   (Supabase → Settings → API Keys → Secret key)
+VAPID_PUBLIC_KEY = "BKHIpaYLyrZ0tZCzqiisPp7VOUFyToh-dOiojR-3AnKYGGT1L8A_bj6AQSOYmkUq2cWuTV3u4MXTMZJRIdfcFQg"
+VAPID_SUBJECT = "https://poortrader.com"
+# Kill switch: anything other than "true" stops sending (state is still tracked).
+PUSH_ENABLED = "true"
 
 # Secrets (run `wrangler secret put FINNHUB_KEY` and `wrangler secret put FRED_API_KEY`):
 #   FINNHUB_KEY  – optional; enables news on stock detail + world map hover

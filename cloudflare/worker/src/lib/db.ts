@@ -299,6 +299,40 @@ export async function getWatchlistMetrics(
   return { map, freshest };
 }
 
+// Cached metrics for just these symbols, plus each entry's age so callers can
+// show slightly old numbers while re-scoring them. D1 allows at most 100 bound
+// parameters per statement, hence the chunking.
+export async function getWatchlistMetricsFor(
+  db: D1Database,
+  symbols: string[],
+  maxAgeSeconds = 86400,
+): Promise<{ map: Record<string, unknown>; ageSec: Record<string, number>; freshest: number }> {
+  const map: Record<string, unknown> = {};
+  const ageSec: Record<string, number> = {};
+  let freshest = 0;
+  for (let i = 0; i < symbols.length; i += 90) {
+    const chunk = symbols.slice(i, i + 90);
+    const rows = await db
+      .prepare(
+        `SELECT symbol, payload_json, computed_at FROM watchlist_metrics
+         WHERE symbol IN (${chunk.map(() => "?").join(",")})`,
+      )
+      .bind(...chunk)
+      .all<{ symbol: string; payload_json: string; computed_at: string }>();
+    for (const r of rows.results) {
+      const t = new Date(r.computed_at).getTime();
+      const age = (Date.now() - t) / 1000;
+      if (age > maxAgeSeconds) continue;
+      try {
+        map[r.symbol] = JSON.parse(r.payload_json);
+        ageSec[r.symbol] = age;
+        if (t > freshest) freshest = t;
+      } catch { /* skip */ }
+    }
+  }
+  return { map, ageSec, freshest };
+}
+
 export async function upsertWatchlistMetrics(
   db: D1Database,
   metrics: Array<{ symbol: string; focus_score: number; payload: unknown }>,

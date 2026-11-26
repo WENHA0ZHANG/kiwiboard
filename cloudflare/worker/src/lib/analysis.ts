@@ -1,21 +1,13 @@
 import type { YahooBar } from "./yahoo";
+import { ema, r2 } from "./indicators";
+import { EMPTY_PATTERN, PATTERN_CODES, detectPatterns, patternRank } from "./patterns";
+import type { PatternResult } from "./patterns";
+
+export { ema };
+export { toWeekly } from "./patterns";
+export type { PatternResult } from "./patterns";
 
 // ── Generic indicator helpers ────────────────────────────────────────────────
-
-/** Exponential moving average series (same length as input; leading values
- *  seeded with the first close). */
-export function ema(values: number[], period: number): number[] {
-  const out: number[] = new Array(values.length).fill(NaN);
-  if (values.length === 0 || period <= 1) return values.slice();
-  const k = 2 / (period + 1);
-  let prev = values[0];
-  out[0] = prev;
-  for (let i = 1; i < values.length; i++) {
-    prev = values[i] * k + prev * (1 - k);
-    out[i] = prev;
-  }
-  return out;
-}
 
 /** Wilder's RSI of the closing series. Returns the latest value (or null). */
 export function rsi(closes: number[], period = 14): number | null {
@@ -68,215 +60,6 @@ function pctChange(cur: number, prev: number | null | undefined): number | null 
   return Math.round((cur / prev - 1) * 10000) / 100;
 }
 
-function r2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-// ── Pattern detection (heuristic) ────────────────────────────────────────────
-// Generic momentum-continuation heuristics. Flags a recent run-up ("pole")
-// followed by a tight, shallow consolidation ("flag"). No proprietary
-// methodology is reproduced.
-
-export interface PatternResult {
-  high_tight_flag: boolean;
-  bull_flag: boolean;
-  cup_handle: boolean;
-  timeframe: "daily" | "weekly" | null;
-  label: string | null;       // human-readable, e.g. "Cup & Handle (W)"
-  flag_start: string | null;  // base start
-  flag_end: string | null;    // last bar
-  pole_start: string | null;  // run-up start
-  pivot: number | null;       // breakout trigger
-}
-
-const EMPTY_PATTERN: PatternResult = {
-  high_tight_flag: false, bull_flag: false, cup_handle: false,
-  timeframe: null, label: null,
-  flag_start: null, flag_end: null, pole_start: null, pivot: null,
-};
-
-/** Roll daily bars up into weekly bars (Mon–Fri OHLCV aggregation). */
-export function toWeekly(bars: YahooBar[]): YahooBar[] {
-  const out: YahooBar[] = [];
-  let cur: YahooBar | null = null;
-  let curKey = "";
-  for (const b of bars) {
-    const d = new Date(b.date + "T00:00:00Z");
-    const onejan = Date.UTC(d.getUTCFullYear(), 0, 1);
-    const week = Math.floor((d.getTime() - onejan) / (7 * 86400000));
-    const key = `${d.getUTCFullYear()}-${week}`;
-    if (key !== curKey) {
-      if (cur) out.push(cur);
-      cur = { date: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume || 0 };
-      curKey = key;
-    } else if (cur) {
-      cur.high = Math.max(cur.high, b.high);
-      cur.low = Math.min(cur.low, b.low);
-      cur.close = b.close;
-      cur.volume += b.volume || 0;
-    }
-  }
-  if (cur) out.push(cur);
-  return out;
-}
-
-// Detect flag-style bases (High Tight Flag / Bull Flag) on a single series.
-function detectFlags(bars: YahooBar[], tf: "daily" | "weekly"): PatternResult | null {
-  const n = bars.length;
-  const minBars = tf === "weekly" ? 30 : 50;
-  if (n < minBars) return null;
-
-  const closes = bars.map((b) => b.close);
-  const vols = bars.map((b) => b.volume || 0);
-  const last = bars[n - 1];
-  const e21 = ema(closes, 21);
-  const e50 = ema(closes, 50);
-  const px = last.close;
-
-  // Light trend gate: above the 50 EMA, 21 EMA not below the 50.
-  const inUptrend = px > e50[n - 1] * 0.99 && e21[n - 1] >= e50[n - 1] * 0.97;
-  if (!inUptrend) return null;
-
-  const maxFlag = tf === "weekly" ? 10 : 20;
-  let best: { res: PatternResult; depth: number } | null = null;
-
-  for (let flagLen = 3; flagLen <= maxFlag && flagLen < n - 12; flagLen++) {
-    const flag = bars.slice(n - flagLen);
-    const flagHigh = Math.max(...flag.map((b) => b.high));
-    const flagLow = Math.min(...flag.map((b) => b.low));
-    if (flagHigh <= 0) continue;
-    const flagDepth = (flagHigh - flagLow) / flagHigh;
-
-    const poleLookback = Math.min(tf === "weekly" ? 16 : 45, n - flagLen);
-    const poleStartIdx = Math.max(0, n - flagLen - poleLookback);
-    const poleSlice = closes.slice(poleStartIdx, n - flagLen);
-    if (poleSlice.length < 5) continue;
-    const poleBase = Math.min(...poleSlice);
-    const poleGain = poleBase > 0 ? flagHigh / poleBase - 1 : 0;
-
-    const nearHighs = last.close >= flagHigh * 0.86;
-    if (!nearHighs) continue;
-
-    // Volume contraction is a quality bonus, not a hard requirement.
-    const poleVol = vols.slice(poleStartIdx, n - flagLen).filter((v) => v > 0);
-    const flagVol = flag.map((b) => b.volume || 0).filter((v) => v > 0);
-    const avgPole = poleVol.length ? poleVol.reduce((s, v) => s + v, 0) / poleVol.length : 0;
-    const avgFlag = flagVol.length ? flagVol.reduce((s, v) => s + v, 0) / flagVol.length : 0;
-    const volContraction = avgPole > 0 && avgFlag > 0 && avgFlag <= avgPole * 1.05;
-
-    const isHTF =
-      poleGain >= 0.8 &&
-      flagLen >= 3 && flagDepth <= 0.25 && volContraction;
-
-    const isBull =
-      poleGain >= 0.2 &&
-      flagDepth <= 0.15 &&
-      last.close >= flagHigh * 0.90;
-
-    if (isHTF || isBull) {
-      const res: PatternResult = {
-        ...EMPTY_PATTERN,
-        high_tight_flag: isHTF,
-        bull_flag: isBull && !isHTF,
-        timeframe: tf,
-        label: (isHTF ? "High Tight Flag" : "Bull Flag") + (tf === "weekly" ? " (W)" : ""),
-        flag_start: bars[n - flagLen].date,
-        flag_end: last.date,
-        pole_start: bars[poleStartIdx].date,
-        pivot: r2(flagHigh),
-      };
-      if (!best || (isHTF && !best.res.high_tight_flag) || flagDepth < best.depth) {
-        best = { res, depth: flagDepth };
-        if (isHTF) break;
-      }
-    }
-  }
-  return best ? best.res : null;
-}
-
-// Detect a cup-and-handle base on a single series.
-function detectCupHandle(bars: YahooBar[], tf: "daily" | "weekly"): PatternResult | null {
-  const n = bars.length;
-  const closes = bars.map((b) => b.close);
-  const last = bars[n - 1];
-  const e50 = ema(closes, 50);
-  if (n < (tf === "weekly" ? 20 : 40)) return null;
-  if (last.close < e50[n - 1] * 0.97) return null; // base should resolve in an uptrend
-
-  // Try several window lengths for the whole cup+handle.
-  const minW = tf === "weekly" ? 12 : 35;
-  const maxW = Math.min(tf === "weekly" ? 40 : 140, n - 2);
-  for (let w = maxW; w >= minW; w -= (tf === "weekly" ? 2 : 5)) {
-    const win = bars.slice(n - w);
-    const m = win.length;
-    const handleLen = Math.max(2, Math.round(m * (tf === "weekly" ? 0.18 : 0.22)));
-    const leftLen = Math.max(2, Math.round(m * 0.20));
-
-    const leftRim = Math.max(...win.slice(0, leftLen).map((b) => b.high));
-    const cupBottom = Math.min(...win.slice(leftLen, m - handleLen).map((b) => b.low));
-    const rightPart = win.slice(m - handleLen - leftLen, m - handleLen);
-    if (!rightPart.length) continue;
-    const rightRim = Math.max(...rightPart.map((b) => b.high));
-
-    const handle = win.slice(m - handleLen);
-    const handleLow = Math.min(...handle.map((b) => b.low));
-
-    const cupDepth = (leftRim - cupBottom) / leftRim;
-    const rimSym = Math.abs(rightRim - leftRim) / leftRim;
-    const handleDepth = (rightRim - handleLow) / rightRim;
-
-    const validCup = cupDepth >= 0.10 && cupDepth <= 0.55;            // a real correction
-    const validRims = rimSym <= 0.10;                                  // rims roughly level
-    const validHandle = handleDepth > 0 && handleDepth <= 0.18 && handleLow > cupBottom;
-    const nearPivot = last.close >= rightRim * 0.85;
-
-    if (validCup && validRims && validHandle && nearPivot) {
-      return {
-        ...EMPTY_PATTERN,
-        cup_handle: true,
-        timeframe: tf,
-        label: "Cup & Handle" + (tf === "weekly" ? " (W)" : ""),
-        flag_start: win[0].date,
-        flag_end: last.date,
-        pole_start: win[0].date,
-        pivot: r2(Math.max(leftRim, rightRim)),
-      };
-    }
-  }
-  return null;
-}
-
-/**
- * Detect a continuation base across daily AND weekly timeframes. Flags
- * (HTF / Bull) are preferred over cups; daily over weekly when both match.
- */
-export function detectPatterns(dailyBars: YahooBar[]): PatternResult {
-  const weekly = toWeekly(dailyBars);
-  const candidates: Array<PatternResult | null> = [
-    detectFlags(dailyBars, "daily"),
-    detectCupHandle(dailyBars, "daily"),
-    detectFlags(weekly, "weekly"),
-    detectCupHandle(weekly, "weekly"),
-  ];
-  // Priority: daily HTF > daily bull/cup > weekly HTF > weekly bull/cup.
-  const rank = (p: PatternResult | null): number => {
-    if (!p) return -1;
-    let s = 0;
-    if (p.high_tight_flag) s += 4;
-    if (p.bull_flag) s += 3;
-    if (p.cup_handle) s += 3;
-    if (p.timeframe === "daily") s += 1;
-    return s;
-  };
-  let best: PatternResult = EMPTY_PATTERN;
-  let bestRank = -1;
-  for (const c of candidates) {
-    const r = rank(c);
-    if (c && r > bestRank) { best = c; bestRank = r; }
-  }
-  return best;
-}
-
 // ── Full metric bundle for one symbol ────────────────────────────────────────
 
 export interface WatchMetrics {
@@ -304,11 +87,10 @@ export interface WatchMetrics {
   hve: boolean;
   extended: boolean;
   dollar_vol: number | null;
-  high_tight_flag: boolean;
-  bull_flag: boolean;
-  cup_handle: boolean;
   pattern_label: string | null;
+  pattern_labels: string[];
   pattern_tf: "daily" | "weekly" | null;
+  pattern_matches: PatternResult[];
   pivot: number | null;
   stop: number | null;
   stop_pct: number | null;
@@ -330,8 +112,7 @@ export function computeMetrics(symbol: string, bars: YahooBar[]): WatchMetrics {
     ema8: null, ema21: null, ema50: null,
     vol_today: null, vol_avg_1m: null, vol_ratio: null, vol_doubled: false,
     hve: false, extended: false, dollar_vol: null,
-    high_tight_flag: false, bull_flag: false, cup_handle: false,
-    pattern_label: null, pattern_tf: null, pivot: null,
+    pattern_label: null, pattern_labels: [], pattern_tf: null, pattern_matches: [], pivot: null,
     stop: null, stop_pct: null, risk: null, tp1: null, tp2: null,
     focus_score: 0, focus_reasons: [],
     pattern: { ...EMPTY_PATTERN },
@@ -385,12 +166,11 @@ export function computeMetrics(symbol: string, bars: YahooBar[]): WatchMetrics {
     base.extended = price >= base.ema50 + 7 * a;
   }
 
-  const pat = detectPatterns(bars);
+  const { best: pat, all: matches } = detectPatterns(bars);
   base.pattern = pat;
-  base.high_tight_flag = pat.high_tight_flag;
-  base.bull_flag = pat.bull_flag;
-  base.cup_handle = pat.cup_handle;
+  base.pattern_matches = matches;
   base.pattern_label = pat.label;
+  base.pattern_labels = matches.map((p) => p.label ?? "").filter(Boolean);
   base.pattern_tf = pat.timeframe;
   base.pivot = pat.pivot;
 
@@ -415,9 +195,14 @@ export function computeMetrics(symbol: string, bars: YahooBar[]): WatchMetrics {
   if (base.vol_doubled) { score += 4; reasons.push("VOL_DOUBLED"); }
   else if ((base.vol_ratio ?? 0) >= 1.5) { score += 2; reasons.push("VOL_SURGE"); }
   if (base.hve) { score += 3; reasons.push("HVE"); }
-  if (base.high_tight_flag) { score += 4; reasons.push(pat.timeframe === "weekly" ? "HTF_W" : "HTF"); }
-  if (base.bull_flag) { score += 3; reasons.push(pat.timeframe === "weekly" ? "BULL_FLAG_W" : "BULL_FLAG"); }
-  if (base.cup_handle) { score += 3; reasons.push(pat.timeframe === "weekly" ? "CUP_HANDLE_W" : "CUP_HANDLE"); }
+  // The headline pattern carries its full weight; each extra base (e.g. the
+  // same name also basing on the weekly chart) adds a point of confluence.
+  matches.forEach((p, i) => {
+    if (!p.kind) return;
+    const code = PATTERN_CODES[p.kind];
+    reasons.push(p.timeframe === "weekly" ? `${code}_W` : code);
+    score += i === 0 ? patternRank(p) - (p.timeframe === "daily" ? 1 : 0) : 1;
+  });
   if ((base.chg_1m_pct ?? 0) >= 30) { score += 1; reasons.push("STRONG_1M"); }
   if (base.ema8 != null && base.ema21 != null && base.ema50 != null &&
       base.ema8 > base.ema21 && base.ema21 > base.ema50) { score += 1; reasons.push("TREND_UP"); }

@@ -3,6 +3,18 @@ export interface Env {
   FINNHUB_KEY?: string;
   FRED_API_KEY?: string;
   ENVIRONMENT?: string;
+  // Supabase (Google sign-in). URL + anon key are public; ADMIN_EMAILS is a
+  // secret listing who may edit the shared watchlist.
+  SUPABASE_URL?: string;
+  SUPABASE_ANON_KEY?: string;
+  ADMIN_EMAILS?: string;
+  // Push alerts. SUPABASE_SECRET_KEY and VAPID_PRIVATE_KEY are secrets; the
+  // rest are plain vars in wrangler.toml. PUSH_ENABLED="true" turns sending on.
+  SUPABASE_SECRET_KEY?: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
+  PUSH_ENABLED?: string;
 }
 
 export interface Observation {

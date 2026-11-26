@@ -3,6 +3,73 @@ interface YahooChartPoint {
   close: number;
 }
 
+interface YahooChartMeta {
+  regularMarketPrice?: number | null;
+  regularMarketTime?: number | null;
+  regularMarketDayHigh?: number | null;
+  regularMarketDayLow?: number | null;
+  regularMarketVolume?: number | null;
+}
+
+interface YahooQuoteArrays {
+  open?: (number | null)[];
+  high?: (number | null)[];
+  low?: (number | null)[];
+  close?: (number | null)[];
+  volume?: (number | null)[];
+}
+
+interface YahooChartResult {
+  meta?: YahooChartMeta;
+  timestamp?: number[];
+  indicators?: { quote?: YahooQuoteArrays[] };
+}
+
+const INTERVAL_UNIT_SECONDS: Record<string, number> = {
+  m: 60,
+  h: 3600,
+  d: 86400,
+  wk: 7 * 86400,
+  mo: 31 * 86400,
+};
+
+function intervalSeconds(interval: string): number {
+  const m = /^(\d+)(m|h|d|wk|mo)$/i.exec(interval.trim());
+  if (!m) return 86400;
+  return parseInt(m[1], 10) * (INTERVAL_UNIT_SECONDS[m[2].toLowerCase()] ?? 86400);
+}
+
+/**
+ * Yahoo regularly serves the newest bar with a null `close` even after the
+ * session has settled — open/high/low/volume are all present and the settled
+ * price is only exposed via `meta.regularMarketPrice`. Since we drop bars
+ * without a close, such a response silently pins every exchange-traded symbol
+ * one session behind while 24/7 symbols (crypto) keep looking fine. Patch the
+ * price back in, but only while the quote timestamp still falls inside that
+ * bar's interval so we never attribute a newer print to an older bar.
+ */
+function patchLastBarFromMeta(result: YahooChartResult, interval: string): void {
+  const ts = result.timestamp;
+  const q = result.indicators?.quote?.[0];
+  const meta = result.meta;
+  if (!ts?.length || !q?.close || !meta) return;
+
+  const i = ts.length - 1;
+  if (q.close[i] != null) return;
+
+  const price = meta.regularMarketPrice;
+  const quoteTime = meta.regularMarketTime;
+  if (typeof price !== "number" || !Number.isFinite(price)) return;
+  if (typeof quoteTime !== "number") return;
+  if (quoteTime < ts[i] || quoteTime >= ts[i] + intervalSeconds(interval)) return;
+
+  q.close[i] = price;
+  if (q.open && q.open[i] == null) q.open[i] = price;
+  if (q.high && q.high[i] == null) q.high[i] = meta.regularMarketDayHigh ?? price;
+  if (q.low && q.low[i] == null) q.low[i] = meta.regularMarketDayLow ?? price;
+  if (q.volume && q.volume[i] == null) q.volume[i] = meta.regularMarketVolume ?? 0;
+}
+
 export interface YahooNewsArticle {
   title: string;
   url: string;
@@ -80,14 +147,10 @@ export async function fetchYahooChart(
   if (!resp.ok) return [];
 
   try {
-    const data = await resp.json() as {
-      chart?: { result?: Array<{
-        timestamp?: number[];
-        indicators?: { quote?: Array<{ close?: (number | null)[] }> };
-      }> };
-    };
+    const data = await resp.json() as { chart?: { result?: YahooChartResult[] } };
     const result = data?.chart?.result?.[0];
     if (!result) return [];
+    patchLastBarFromMeta(result, interval);
     const timestamps = result.timestamp ?? [];
     const closes = result.indicators?.quote?.[0]?.close ?? [];
 
@@ -151,20 +214,10 @@ export async function fetchYahooOHLCV(
   if (!resp.ok) return [];
 
   try {
-    const data = await resp.json() as {
-      chart?: { result?: Array<{
-        timestamp?: number[];
-        indicators?: { quote?: Array<{
-          open?: (number | null)[];
-          high?: (number | null)[];
-          low?: (number | null)[];
-          close?: (number | null)[];
-          volume?: (number | null)[];
-        }> };
-      }> };
-    };
+    const data = await resp.json() as { chart?: { result?: YahooChartResult[] } };
     const result = data?.chart?.result?.[0];
     if (!result) return [];
+    patchLastBarFromMeta(result, interval);
     const ts = result.timestamp ?? [];
     const q = result.indicators?.quote?.[0] ?? {};
     const opens = q.open ?? [];

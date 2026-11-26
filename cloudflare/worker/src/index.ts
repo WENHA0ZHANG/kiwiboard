@@ -14,9 +14,14 @@ import {
   addWatchlistSymbol,
   removeWatchlistSymbol,
   reorderWatchlist,
-  getWatchlistMetrics,
+  getWatchlistMetricsFor,
   upsertWatchlistMetrics,
 } from "./lib/db";
+import type { WatchlistRow } from "./lib/db";
+import { getSupabaseUser, isAdmin } from "./lib/auth";
+import { checkRegimeAlert, currentRegime, deliver, pushConfigured, regimeMessage } from "./lib/alerts";
+import type { AlertTarget } from "./lib/alerts";
+import { sbDeleteUser, sbSelect, supabaseAdminConfigured } from "./lib/supabase";
 import { computeSignals } from "./lib/signals";
 import { computeMarketRegime } from "./lib/regime";
 import { fetchYahooChart, fetchYahooOHLCV, fetchYahooNews } from "./lib/yahoo";
@@ -27,10 +32,15 @@ import { fetchAllProviders } from "./lib/fetchers";
 import { WORLD_INDICES, getIndexMeta } from "./lib/world";
 
 // ── CORS helpers ─────────────────────────────────────────────────────────────
+// The SPA is served from Pages while the API lives on workers.dev, so every
+// non-simple request is preflighted. DELETE must be advertised here or the
+// browser blocks the watchlist remove button before it ever reaches us.
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+  // Authorization carries the Supabase access token for admin-only writes.
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Max-Age": "86400",
 };
 
 function json(data: unknown, status = 200): Response {
@@ -278,6 +288,104 @@ async function buildWatchMetrics(symbol: string, name: string | null) {
   if (!bars.length) return null;
   const m = computeMetrics(symbol, bars);
   return { ...m, name: name ?? symbol };
+}
+
+// ── Watchlist access control ────────────────────────────────────────────────
+// The shared watchlist is what every visitor sees, so writing to it requires
+// a signed-in Supabase user whose email is in the ADMIN_EMAILS secret.
+// (Previously POST/DELETE/reorder were open to anyone on the internet.)
+async function requireAdmin(request: Request, env: Env): Promise<Response | null> {
+  const user = await getSupabaseUser(request, env);
+  if (!user) return err("Sign in required", 401);
+  if (!isAdmin(user, env)) return err("Only the site admin can edit the shared watchlist", 403);
+  return null;
+}
+
+// Simple D1-backed limiter: true at most once per `seconds` for a given key.
+async function allowOncePer(env: Env, key: string, seconds: number): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  const prev = await env.DB.prepare("SELECT value FROM kv_store WHERE key = ?")
+    .bind(key).first<{ value: string }>();
+  if (prev && now - (parseInt(prev.value, 10) || 0) < seconds) return false;
+  await env.DB.prepare(
+    "INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, datetime('now')) " +
+      "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+  ).bind(key, String(now)).run();
+  return true;
+}
+
+// `?refresh=1` re-scores every requested symbol (one Yahoo fetch each), so an
+// anonymous caller gets at most one forced refresh per IP every 2 minutes;
+// otherwise the request is served from cache instead of failing.
+function allowWatchlistRefresh(request: Request, env: Env): Promise<boolean> {
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  return allowOncePer(env, `ratelimit:wlrefresh:${ip}`, 120);
+}
+
+const WATCH_SYMBOL_RE = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
+const MAX_PERSONAL_SYMBOLS = 100;   // matches the per-list cap in Supabase
+const MAX_SCORED_PER_REQUEST = 12;  // keeps one request inside the CPU budget
+const PERSONAL_STALE_SECONDS = 30 * 60;
+
+// Score a list of symbols from the shared metrics cache, computing what's
+// missing. Personal lists (`personal = true`) are arbitrary and possibly long,
+// so only a few symbols are (re)scored per request; anything still waiting is
+// returned in `pending` and the page asks again. Personal symbols also aren't
+// refreshed by the cron, so cached numbers older than 30 min are re-scored
+// (while still being shown in the meantime).
+async function scoreWatchlist(
+  env: Env,
+  ctx: ExecutionContext,
+  entries: WatchlistRow[],
+  force: boolean,
+  personal: boolean,
+) {
+  const symbols = entries.map((e) => e.symbol);
+  const { map, ageSec, freshest: cachedFreshest } = await getWatchlistMetricsFor(
+    env.DB, symbols, !personal && force ? 0 : 24 * 3600,
+  );
+  let freshest = cachedFreshest;
+  const needs = entries.filter((e) =>
+    !map[e.symbol] || (personal && (force || ageSec[e.symbol] > PERSONAL_STALE_SECONDS)),
+  );
+  const targets = personal ? needs.slice(0, MAX_SCORED_PER_REQUEST) : needs;
+  if (targets.length) {
+    const settled = await Promise.allSettled(targets.map((w) => buildWatchMetrics(w.symbol, w.name)));
+    const writes: Array<{ symbol: string; focus_score: number; payload: unknown }> = [];
+    for (let i = 0; i < settled.length; i++) {
+      const r = settled[i];
+      if (r.status === "fulfilled" && r.value) {
+        map[targets[i].symbol] = r.value;
+        writes.push({ symbol: targets[i].symbol, focus_score: r.value.focus_score ?? 0, payload: r.value });
+      }
+    }
+    if (writes.length) {
+      ctx.waitUntil(upsertWatchlistMetrics(env.DB, writes));
+      freshest = Date.now();
+    }
+  }
+  const scored = new Set(targets.map((t) => t.symbol));
+  const pending = needs.filter((e) => !scored.has(e.symbol)).map((e) => e.symbol);
+
+  const rows = entries.map((w) => {
+    const m = (map[w.symbol] as Record<string, unknown>) || null;
+    return {
+      symbol: w.symbol,
+      name: w.name || (m?.name as string) || w.symbol,
+      note: w.note,
+      added_at: w.added_at,
+      metrics: m,
+    };
+  });
+
+  // Special focus: anything with focus_score >= 4, sorted by score desc.
+  const score = (r: { metrics: unknown }) => (r.metrics as { focus_score?: number } | null)?.focus_score ?? 0;
+  const focus = rows.filter((r) => score(r) >= 4).sort((a, b) => score(b) - score(a));
+
+  return {
+    rows, focus, pending,
+    computed_at: freshest ? new Date(freshest).toISOString() : null,
+  };
 }
 
 async function refreshWatchlistMetrics(env: Env): Promise<number> {
@@ -664,67 +772,36 @@ export default {
     // Used by page 05 (Watchlist) for the user-curated stock repository.
     if (pathname === "/api/watchlist") {
       if (request.method === "GET") {
-        const force = url.searchParams.get("refresh") === "1";
+        const force = url.searchParams.get("refresh") === "1" && (await allowWatchlistRefresh(request, env));
+        const symParam = url.searchParams.get("symbols");
+        if (symParam !== null) {
+          // A signed-in user's personal list: the browser reads it from
+          // Supabase and only asks us to score the symbols (no identity needed).
+          const syms = [...new Set(
+            symParam.split(",").map((s) => s.trim().toUpperCase()).filter((s) => WATCH_SYMBOL_RE.test(s)),
+          )].slice(0, MAX_PERSONAL_SYMBOLS);
+          const entries: WatchlistRow[] = syms.map((symbol) => ({ symbol, name: null, note: null, added_at: "" }));
+          return json(await scoreWatchlist(env, ctx, entries, force, true));
+        }
         await seedDefaultWatchlistIfEmpty(env);
         const wl = await getWatchlist(env.DB);
-        let { map, freshest } = await getWatchlistMetrics(env.DB, force ? 0 : 24 * 3600);
-
-        // Compute on demand for any watchlist symbol whose cached metrics are
-        // missing or stale. We block on this so the client always renders a
-        // complete table; cap concurrency by relying on Promise.allSettled.
-        const missing = wl.filter((w) => !map[w.symbol]);
-        if (missing.length || force) {
-          const targets = force ? wl : missing;
-          const settled = await Promise.allSettled(
-            targets.map((w) => buildWatchMetrics(w.symbol, w.name)),
-          );
-          const writes: Array<{ symbol: string; focus_score: number; payload: unknown }> = [];
-          for (let i = 0; i < settled.length; i++) {
-            const r = settled[i];
-            if (r.status === "fulfilled" && r.value) {
-              map[targets[i].symbol] = r.value;
-              writes.push({ symbol: targets[i].symbol, focus_score: r.value.focus_score ?? 0, payload: r.value });
-            }
-          }
-          if (writes.length) {
-            ctx.waitUntil(upsertWatchlistMetrics(env.DB, writes));
-            freshest = Date.now();
-          }
-        }
-
-        const rows = wl.map((w) => {
-          const m = (map[w.symbol] as Record<string, unknown>) || null;
-          return {
-            symbol: w.symbol,
-            name: w.name || (m?.name as string) || w.symbol,
-            note: w.note,
-            added_at: w.added_at,
-            metrics: m,
-          };
-        });
-
-        // Special focus: anything with focus_score >= 4, sorted by score desc.
-        const focus = rows
-          .filter((r) => ((r.metrics as { focus_score?: number } | null)?.focus_score ?? 0) >= 4)
-          .sort((a, b) =>
-            ((b.metrics as { focus_score?: number } | null)?.focus_score ?? 0) -
-            ((a.metrics as { focus_score?: number } | null)?.focus_score ?? 0),
-          );
-
-        return json({
-          rows, focus,
-          computed_at: freshest ? new Date(freshest).toISOString() : null,
-        });
+        return json(await scoreWatchlist(env, ctx, wl, force, false));
       }
 
       if (request.method === "POST") {
+        const denied = await requireAdmin(request, env);
+        if (denied) return denied;
         let body: { symbol?: string; name?: string; note?: string } = {};
         try { body = await request.json(); } catch { return err("Invalid JSON body"); }
         const sym = (body.symbol || "").trim().toUpperCase();
-        if (!sym || !/^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(sym)) {
+        if (!sym || !WATCH_SYMBOL_RE.test(sym)) {
           return err("Invalid symbol");
         }
-        await addWatchlistSymbol(env.DB, sym, (body.name || sym).trim(), (body.note || "").trim() || null);
+        await addWatchlistSymbol(
+          env.DB, sym,
+          String(body.name || sym).trim().slice(0, 120),
+          String(body.note || "").trim().slice(0, 500) || null,
+        );
         // Pre-warm metrics so the row shows up populated.
         ctx.waitUntil((async () => {
           const m = await buildWatchMetrics(sym, body.name || sym);
@@ -734,6 +811,8 @@ export default {
       }
 
       if (request.method === "DELETE") {
+        const denied = await requireAdmin(request, env);
+        if (denied) return denied;
         const sym = (url.searchParams.get("symbol") || "").trim().toUpperCase();
         if (!sym) return err("Missing symbol");
         await removeWatchlistSymbol(env.DB, sym);
@@ -743,13 +822,64 @@ export default {
 
     // ── /api/watchlist/refresh ──────────────────────────────────────────────
     if (pathname === "/api/watchlist/refresh" && request.method === "POST") {
+      const denied = await requireAdmin(request, env);
+      if (denied) return denied;
       const wrote = await refreshWatchlistMetrics(env);
       return json({ ok: true, wrote });
+    }
+
+    // ── /api/push/test ───────────────────────────────────────────────────────
+    // "Send test notification" in the Alerts dialog: pushes the current
+    // regime to the caller's own devices only (once a minute per user).
+    if (pathname === "/api/push/test" && request.method === "POST") {
+      const user = await getSupabaseUser(request, env);
+      if (!user) return err("Sign in required", 401);
+      if (!pushConfigured(env)) return err("Push isn't configured on the server yet", 503);
+      if (!(await allowOncePer(env, `ratelimit:pushtest:${user.id}`, 60))) {
+        return err("Please wait a minute before sending another test", 429);
+      }
+      const targets = await sbSelect<AlertTarget[]>(
+        env, `push_subscriptions?user_id=eq.${encodeURIComponent(user.id)}&select=user_id,endpoint,p256dh,auth`,
+      );
+      if (!targets.length) return err("No device is subscribed for this account yet", 404);
+      const msg = regimeMessage(await currentRegime(env), null);
+      const r = await deliver(env, targets, { ...msg, title: `Test · ${msg.title}`, body: "Alerts work on this device." }, "test");
+      return json({ ok: r.delivered > 0, devices: targets.length, ...r });
+    }
+
+    // ── /api/account (DELETE) ────────────────────────────────────────────────
+    // "Delete account" in Settings. Only ever deletes the caller's own account
+    // (the id comes from their verified token); data goes with it by cascade.
+    if (pathname === "/api/account" && request.method === "DELETE") {
+      const user = await getSupabaseUser(request, env);
+      if (!user) return err("Sign in required", 401);
+      if (!supabaseAdminConfigured(env)) return err("Account deletion isn't configured on the server", 503);
+      if (!(await allowOncePer(env, `ratelimit:acctdel:${user.id}`, 30))) {
+        return err("Please wait a moment and try again", 429);
+      }
+      try {
+        await sbDeleteUser(env, user.id);
+      } catch (e) {
+        console.error("delete account:", e);
+        return err("Could not delete the account, please try again later", 502);
+      }
+      return json({ deleted: true });
+    }
+
+    // ── /api/me ──────────────────────────────────────────────────────────────
+    // Lets the page know whether the signed-in user is the site admin (and so
+    // edits the shared watchlist) or a regular user with a personal list.
+    if (pathname === "/api/me" && request.method === "GET") {
+      const user = await getSupabaseUser(request, env);
+      if (!user) return err("Not signed in", 401);
+      return json({ email: user.email, admin: isAdmin(user, env) });
     }
 
     // ── /api/watchlist/reorder ──────────────────────────────────────────────
     // Persist the user's manual drag order. Body: { order: ["NVDA", ...] }.
     if (pathname === "/api/watchlist/reorder" && request.method === "POST") {
+      const denied = await requireAdmin(request, env);
+      if (denied) return denied;
       const body = await request.json().catch(() => ({})) as { order?: unknown };
       const order = Array.isArray(body.order)
         ? body.order.map((s) => String(s).toUpperCase()).filter(Boolean)
@@ -973,6 +1103,13 @@ export default {
           console.error("scheduled: fetchAllProviders/upsert failed", e);
         }
 
+        // 2b) Regime-change push alerts (on the indicators just stored).
+        try {
+          console.log(`scheduled: ${await checkRegimeAlert(env)} (+${Date.now() - t0}ms)`);
+        } catch (e) {
+          console.error("scheduled: regime alert failed", e);
+        }
+
         // 3) Refresh the market_overview cache (Indices / Futures & Crypto
         //    / Stocks). Without this, /api/market-overview keeps returning
         //    the first-ever snapshot — the endpoint only re-fetches *missing*
@@ -1004,6 +1141,23 @@ export default {
           console.log(`scheduled: watchlist wrote=${n} (+${Date.now() - t0}ms)`);
         } catch (e) {
           console.error("scheduled: watchlist refresh failed", e);
+        }
+
+        // 3c) Keep the free-tier Supabase project awake. Supabase pauses free
+        //     projects after 7 days without traffic, which would break Google
+        //     sign-in after a quiet week. One tiny read a day (03:00 UTC tick).
+        const nowUtc = new Date();
+        if (env.SUPABASE_URL && env.SUPABASE_ANON_KEY && nowUtc.getUTCHours() === 3 && nowUtc.getUTCMinutes() < 30) {
+          try {
+            const resp = await fetch(
+              `${env.SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/watchlist_items?select=symbol&limit=1`,
+              { headers: { apikey: env.SUPABASE_ANON_KEY }, signal: AbortSignal.timeout(5000) },
+            );
+            // 401 is expected (anon can't read the table) and still counts as traffic.
+            console.log(`scheduled: supabase keep-alive HTTP ${resp.status}`);
+          } catch (e) {
+            console.error("scheduled: supabase keep-alive failed", e);
+          }
         }
 
         // 4) Final heartbeat. Most ticks reach here; this updates the
