@@ -338,6 +338,15 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 - 只停用新方式：把 `DIRECT_ORIGIN` 改成 `""` 再部署。
 - 以后想让 Google 页面显示 "kiwiboard" 和图标：需要 Google 的品牌验证，要求在 Search Console 验证 poortrader.com、首页名字一致、有隐私政策页。
 
+### 第九轮：顶栏对齐（2026-11-27 已部署：Pages `5f57bc9d`，Worker 没变）
+
+只改了 `cloudflare/pages/index.html` 的 CSS。顶栏的字都落在 "kiwiboard" 字的基线上：
+- 原因：顶栏里各项都是垂直居中，字比 23px 的 kiwiboard 小的就会偏高。
+- 标签（Market…Signals，16–17px）偏高 2.7–3.1px。从 1100px 起往下挪 `calc((23px - 1em) * 0.45)`；平板和手机的标签不在这一行，不动。
+- 右边的日期时间和 "Live"（15px）偏高 3.2px。右边整组（灰字、图标、头像）从 721px 起一起下移 3.2px，图标和灰字仍然互相居中。
+- 头像比旁边的图标高 2.5px：它外面的两个 span 按文字排版，多出行高（43px，按钮是 38px）。改成 inline-flex 后和图标在同一条中线上。
+- 实测（线上，1440px）：kiwiboard、标签、日期、Live 的基线都在 52.4–52.5px；主题按钮、Sign in、头像的中心都在 47.2px。平板（768、1024）的 Live 也和 kiwiboard 对齐；手机顶栏没变。
+
 ## 平台限制
 
 - **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
@@ -350,6 +359,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 ## 回滚
 
 - **代码**：
+  - 第九轮之前：`git checkout 08ad130 -- cloudflare/pages/index.html`
   - 第八轮之前：`git checkout f917e35 -- cloudflare/pages/index.html`，再删掉 `cloudflare/pages/auth/`
   - 第七轮之前：`git checkout 8409724 -- cloudflare/pages/index.html`
   - 第六轮之前：`git checkout 683522e -- cloudflare/pages/index.html cloudflare/worker/src README.md`
@@ -358,6 +368,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
   - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
   - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
 - **线上版本**：
+  - 第九轮之前：Pages `da6474c1`（只改了 CSS）。
   - 第八轮之前：Pages `7e4324fc`。只想停用新的登录方式的话，把 `DIRECT_ORIGIN` 改成 `""` 再部署就行。
   - 第七轮之前：Pages `7e346e49`（这一轮只改了页面，Worker 不用退）。
   - 第六轮之前：Pages `5e855b90`，Worker `0261a32a`。新页面要用新 Worker 的 `assets=` 参数（只退 Worker 的话，自己加的期货和加密货币没有数据），所以先退 Pages，再退 Worker。
