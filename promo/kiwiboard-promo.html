@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>kiwiboard · promo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  kiwiboard promo video, 1440 × 1080 (4:3), about 55 s.
+  Every frame is a pure function of time: window.__render(t) draws second t.
+  Open this file through a local web server to preview (Space plays, ← → step,
+  the bar scrubs). render.mjs captures frames headless; encode.swift makes the MP4.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..900&display=block">
+<style>
+:root {
+  --bg: #ffffff; --surface: #fafafa; --text-strong: #171717; --text: #262626; --muted: #737373; --faint: #a3a3a3;
+  --border: #e5e5e5; --border-strong: #d4d4d4; --grid: #eeeeee;
+  --brand: #a3cf42; --brand-ink: #466a12; --brand-soft: #f2f7e5; --bull: #16803d; --bear: #dc4444; --chart: #729e2c; --warning: #b45309;
+  --ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --ios-blue: #007aff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #dcdcdc; font-family: Inter, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+body.render { background: #fff; overflow: hidden; }
+#stage { position: absolute; left: 0; top: 0; width: 1440px; height: 1080px; overflow: hidden; background: #fff; color: var(--text-strong); transform-origin: 0 0; }
+.layer { position: absolute; left: 0; top: 0; width: 1440px; height: 1080px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ── Logo lockup (intro + end) ─────────────────────────────────────────── */
+.lockup { position: absolute; left: 0; top: 0; width: 1440px; height: 1080px; display: flex; flex-direction: column; align-items: center; justify-content: center; transform-origin: 720px 520px; }
+.lk-row { display: flex; align-items: center; gap: 38px; }
+.lk-kiwi { width: 172px; height: 172px; display: block; transform-origin: 50% 62%; }
+.lk-word { position: relative; font-size: 160px; font-weight: 800; letter-spacing: -0.045em; line-height: 1; padding: 0 8px 14px 0; color: #171717; white-space: nowrap; }
+.lk-word span { position: absolute; top: 0; display: inline-block; letter-spacing: 0; transform-origin: 50% 88%; }
+.lk-slogan { margin-top: 36px; font-size: 40px; font-weight: 400; letter-spacing: -0.005em; color: #737373; }
+.lk-url { margin-top: 26px; font-size: 24px; font-weight: 600; letter-spacing: 0.01em; color: #b7dc59; }
+.dark .lk-word { color: #f5f5f5; }
+.dark .lk-slogan { color: #a3a3a3; }
+
+/* ── Titles ────────────────────────────────────────────────────────────── */
+.h1 { position: absolute; left: 0; width: 1440px; text-align: center; font-size: 66px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.05; white-space: nowrap; }
+
+/* ── Indicator tiles ───────────────────────────────────────────────────── */
+.tile { position: absolute; left: 0; top: 0; width: 300px; height: 150px; border: 1px solid var(--border); border-radius: 18px; background: #fff;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.055), 0 2px 6px rgba(0,0,0,0.03); padding: 20px 22px 0; overflow: hidden; transform-origin: 150px 75px; }
+.t-name { font-size: 25px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+.t-pts { position: absolute; right: 16px; top: 17px; height: 32px; line-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 18px; font-weight: 700;
+  color: var(--bull); background: var(--brand-soft); box-shadow: inset 0 0 0 1px rgba(163,207,66,0.6); font-variant-numeric: tabular-nums; }
+.t-pts.zero { color: var(--faint); background: #f4f4f4; box-shadow: none; }
+.t-spark { position: absolute; left: 0; bottom: 0; width: 300px; height: 84px; }
+.fly { position: absolute; left: 0; top: 0; height: 34px; line-height: 34px; padding: 0 14px; border-radius: 999px; font-size: 19px; font-weight: 700; color: var(--bull);
+  background: var(--brand-soft); box-shadow: inset 0 0 0 1px rgba(163,207,66,0.7), 0 8px 18px rgba(70,106,18,0.18); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ── Regime card ───────────────────────────────────────────────────────── */
+#rcard { position: absolute; left: 0; top: 0; width: 640px; padding: 30px 32px 28px; background: #fff; border: 1px solid var(--border); border-radius: 24px; transform-origin: 0 0; }
+.rc-head { display: flex; justify-content: space-between; align-items: center; height: 40px; }
+.rc-title { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.rc-date { font-size: 16px; font-weight: 600; color: var(--text); border: 1px solid var(--border-strong); border-radius: 10px; padding: 8px 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rc-band { font-size: 84px; font-weight: 800; letter-spacing: -0.045em; line-height: 1; margin-top: 22px; height: 88px; white-space: nowrap; }
+.rc-scoreline { margin-top: 12px; display: flex; align-items: baseline; gap: 14px; height: 46px; }
+.rc-score { font-size: 42px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; display: inline-block; transform-origin: 0 70%; }
+.rc-scorelbl { font-size: 22px; color: var(--muted); }
+.rc-bar { position: relative; margin-top: 44px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; }
+.rc-bar i { display: block; height: 12px; border-radius: 6px; }
+.rc-ptr { position: absolute; left: 0; top: -27px; width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 14px solid #171717; margin-left: -10px; }
+.rc-barlbl { display: flex; justify-content: space-between; margin-top: 13px; font-size: 17px; color: var(--muted); }
+#rcard.replay .rc-date { font-size: 24px; padding: 8px 14px; border-color: #bdbdbd; color: #171717; }
+
+/* Band ladder */
+.ladder { position: absolute; left: 80px; top: 806px; width: 1280px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.lad { position: relative; padding: 15px 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: #fff; text-align: center; }
+.lad i { display: block; height: 8px; border-radius: 4px; margin-bottom: 12px; }
+.lad b { display: block; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+.lad.on { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 3px rgba(163,207,66,0.22); }
+.lad.on b { color: var(--bull); }
+
+/* ── Chart scene ───────────────────────────────────────────────────────── */
+#chart { position: absolute; left: 0; top: 0; }
+.ch-title { position: absolute; left: 70px; top: 62px; font-size: 54px; font-weight: 800; letter-spacing: -0.035em; white-space: nowrap; }
+.ch-foot { position: absolute; left: 72px; top: 1048px; font-size: 13px; color: var(--faint); white-space: nowrap; }
+.co { position: absolute; left: 0; top: 0; padding: 10px 15px 11px; border-radius: 12px; background: rgba(255,255,255,0.96); border: 1px solid var(--border); box-shadow: 0 10px 26px rgba(0,0,0,0.08); white-space: nowrap; }
+.co small { display: block; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.co b { display: block; margin-top: 3px; font-size: 27px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.co.buy { border-color: rgba(147,189,64,0.75); } .co.buy b { color: var(--bull); }
+.co.risk { border-color: rgba(222,176,168,0.95); } .co.risk b { color: var(--bear); }
+.ring { position: absolute; left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2.5px solid var(--bull); }
+.ring.risk { border-color: var(--bear); }
+.gain { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 50px; font-weight: 800; letter-spacing: -0.03em; color: var(--bull); font-variant-numeric: tabular-nums; }
+.toast { position: absolute; left: 72px; top: 150px; width: 560px; height: 96px; border-radius: 26px; background: rgba(246,246,246,0.98); border: 1px solid #e4e4e4;
+  box-shadow: 0 16px 38px rgba(0,0,0,0.13); font-family: var(--ios); }
+.toast img { position: absolute; left: 18px; top: 18px; width: 60px; height: 60px; border-radius: 14px; }
+.toast .tt { position: absolute; left: 94px; top: 0; line-height: 96px; font-size: 27px; font-weight: 600; letter-spacing: -0.01em; color: #111; white-space: nowrap; }
+.toast .tn { position: absolute; right: 24px; top: 0; line-height: 96px; font-size: 17px; color: #8a8a8e; }
+
+/* ── Phone ─────────────────────────────────────────────────────────────── */
+#phone { position: absolute; left: 250px; top: 118px; width: 390px; height: 844px; transform-origin: 195px 422px; }
+.ph-body { position: absolute; left: 0; top: 0; width: 390px; height: 844px; border-radius: 56px; background: transparent;
+  box-shadow: 0 0 0 3px #050505, 0 0 0 14px #1d1d1f, 0 0 0 15.5px #4b4b50, 0 0 0 17px #1a1a1c, 0 52px 90px 17px rgba(0,0,0,0.20), 0 18px 36px 17px rgba(0,0,0,0.12); }
+.ph-btn { position: absolute; width: 4px; border-radius: 2px; background: #2e2e31; }
+.ph-screen { position: absolute; left: 0; top: 0; width: 390px; height: 844px; border-radius: 56px; overflow: hidden; background: transparent; font-family: var(--ios); -webkit-mask-image: -webkit-radial-gradient(white, black); }
+.ph-island { position: absolute; left: 132px; top: 11px; width: 126px; height: 37px; border-radius: 19px; background: #000; z-index: 50; }
+.ph-homebar { position: absolute; left: 128px; bottom: 8px; width: 134px; height: 5px; border-radius: 3px; background: #111; z-index: 50; }
+.sbar { position: absolute; left: 0; top: 0; width: 390px; height: 54px; z-index: 40; color: #000; }
+.sbar .tm { position: absolute; left: 0; width: 160px; top: 17px; text-align: center; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.sbar svg { position: absolute; top: 21px; }
+.sbar.white { color: #fff; }
+
+.ph-app { position: absolute; inset: 0; background: #fff; }
+.ph-page { position: absolute; left: 0; top: 54px; width: 390px; height: 790px; overflow: hidden; background: #fff; }
+.ph-page img { position: absolute; left: 0; top: 0; width: 390px; }
+.ph-hdr { position: absolute; left: 0; top: 0; width: 390px; height: 61px; background-size: 390px auto; background-repeat: no-repeat; background-position: 0 0; }
+.tabbar { position: absolute; left: 0; bottom: 0; width: 390px; height: 92px; background: rgba(255,255,255,0.96); border-top: 1px solid var(--border); font-family: Inter, sans-serif; z-index: 20; }
+.tb-btn { position: absolute; top: 0; width: 76.4px; height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 500; color: #737373; letter-spacing: 0.01em; }
+.tb-btn svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.tb-ind { position: absolute; top: -1px; height: 2px; border-radius: 0 0 2px 2px; background: var(--brand); width: 30.6px; }
+.spot { position: absolute; left: 0; top: 0; border-radius: 12px; z-index: 22; }
+.lift { position: absolute; left: 0; top: 0; border-radius: 10px; z-index: 23; background-repeat: no-repeat; background-size: 390px auto; transform-origin: 50% 50%; }
+
+/* Settings dialog (the app's own look) */
+.ph-dim { position: absolute; inset: 0; background: rgba(23,23,23,0.36); z-index: 25; }
+.dlg { position: absolute; left: 12px; top: 176px; width: 366px; padding: 20px 20px 10px; border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.04); font-family: Inter, sans-serif; color: var(--text); z-index: 26; transform-origin: 50% 40%; }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 6px; }
+.dlg-head h3 { font-size: 18px; font-weight: 700; color: var(--text-strong); }
+.dlg-x { font-size: 24px; line-height: 1; color: var(--muted); padding: 0 2px; }
+.st-h { margin: 6px 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.ad-lead { margin: 0 0 10px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.ad-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.ad-row b { font-size: 15px; color: var(--text-strong); font-weight: 600; }
+.ad-sub { position: relative; margin-top: 2px; font-size: 13px; color: var(--muted); height: 17px; width: 160px; }
+.ad-sub span, .ad-btn span { position: absolute; left: 0; top: 0; white-space: nowrap; }
+.ad-btn { position: relative; flex: none; height: 36px; line-height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border-strong); background: #fff; color: var(--text-strong); font-size: 14px; font-weight: 600; }
+.ad-btn.primary { background: #171717; border-color: #171717; color: #fff; }
+#dlg-toggle { width: 86px; text-align: center; }
+#dlg-toggle span { left: 0; width: 100%; text-align: center; }
+.ad-bands { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 4px 0 10px; padding: 10px 14px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.ad-bands legend { padding: 0 4px; font-size: 13px; color: var(--muted); }
+.ad-bands label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); }
+.cb { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid #8f8f8f; background: #fff; position: relative; flex: none; }
+.cb.on { background: var(--chart); border-color: var(--chart); }
+.cb.on::after { content: ""; position: absolute; left: 4.5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+#dlg-test { color: var(--text-strong); }
+
+/* iOS permission prompt + notification banner */
+.ios-dim { position: absolute; inset: 0; background: rgba(0,0,0,0.22); z-index: 30; }
+.ios-alert { position: absolute; left: 60px; top: 330px; width: 270px; border-radius: 14px; background: rgba(242,242,242,0.97); z-index: 31; text-align: center; overflow: hidden; transform-origin: 50% 50%; box-shadow: 0 10px 40px rgba(0,0,0,0.18); }
+.ios-alert .ia-t { padding: 19px 16px 0; font-size: 17px; font-weight: 600; line-height: 1.29; color: #000; }
+.ios-alert .ia-m { padding: 4px 16px 19px; font-size: 13px; line-height: 1.38; color: #000; }
+.ios-alert .ia-b { display: flex; border-top: 0.5px solid rgba(60,60,67,0.36); }
+.ios-alert .ia-b div { flex: 1; height: 44px; line-height: 44px; font-size: 17px; color: var(--ios-blue); }
+.ios-alert .ia-b div + div { border-left: 0.5px solid rgba(60,60,67,0.36); font-weight: 600; }
+.ios-alert .ia-b div.press { background: rgba(0,0,0,0.08); }
+.banner { position: absolute; left: 9px; top: 0; width: 372px; height: 78px; border-radius: 24px; background: rgba(246,246,246,0.96); z-index: 45;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.06); }
+.banner img { position: absolute; left: 13px; top: 16px; width: 46px; height: 46px; border-radius: 11px; }
+.banner .bt { position: absolute; left: 70px; top: 16px; font-size: 15.5px; font-weight: 600; color: #000; }
+.banner .bb { position: absolute; left: 70px; top: 38px; font-size: 15.5px; color: #1c1c1e; }
+.banner .bn { position: absolute; right: 18px; top: 17px; font-size: 13.5px; color: #8a8a8e; }
+
+/* Safari, share sheet, Add to Home Screen, Home Screen */
+.ph-safari { position: absolute; inset: 0; background: #fff; }
+.sf-bar { position: absolute; left: 0; bottom: 0; width: 390px; height: 140px; background: rgba(249,249,249,0.97); border-top: 0.5px solid rgba(0,0,0,0.18); z-index: 22; }
+.sf-url { position: absolute; left: 12px; top: 10px; width: 366px; height: 46px; border-radius: 13px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.08); }
+.sf-url .host { position: absolute; left: 0; width: 366px; top: 13px; text-align: center; font-size: 17px; color: #000; letter-spacing: -0.01em; }
+.sf-url svg { position: absolute; top: 12px; }
+.sf-tools { position: absolute; left: 0; top: 66px; width: 390px; height: 40px; }
+.sf-tools svg { position: absolute; top: 6px; width: 28px; height: 28px; fill: none; stroke: var(--ios-blue); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sf-tab { position: absolute; left: 0; top: 646px; width: 390px; height: 58px; background: rgba(255,255,255,0.96); border-top: 1px solid var(--border); font-family: Inter, sans-serif; z-index: 21; }
+.sheet-dim { position: absolute; inset: 0; background: rgba(0,0,0,0.25); z-index: 33; }
+.sheet { position: absolute; left: 0; width: 390px; background: #f2f2f7; border-radius: 14px 14px 0 0; z-index: 34; overflow: hidden; }
+.sh-head { position: relative; height: 80px; }
+.sh-head img { position: absolute; left: 18px; top: 18px; width: 46px; height: 46px; border-radius: 10px; }
+.sh-head .n { position: absolute; left: 76px; top: 20px; font-size: 16px; font-weight: 600; color: #000; }
+.sh-head .u { position: absolute; left: 76px; top: 42px; font-size: 14px; color: #8a8a8e; }
+.sh-head .x { position: absolute; right: 16px; top: 22px; width: 30px; height: 30px; border-radius: 50%; background: #e3e3e8; }
+.sh-head .x::before, .sh-head .x::after { content: ""; position: absolute; left: 9px; top: 14px; width: 12px; height: 2px; border-radius: 1px; background: #8a8a8e; transform: rotate(45deg); }
+.sh-head .x::after { transform: rotate(-45deg); }
+.sh-group { margin: 0 16px 16px; border-radius: 12px; background: #fff; overflow: hidden; }
+.sh-row { position: relative; height: 50px; line-height: 50px; padding-left: 16px; font-size: 17px; color: #000; }
+.sh-row + .sh-row { border-top: 0.5px solid rgba(60,60,67,0.22); }
+.sh-row svg { position: absolute; right: 16px; top: 13px; width: 24px; height: 24px; fill: none; stroke: #1c1c1e; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sh-row.hl { background: #e5e5ea; }
+.add-nav { position: relative; height: 56px; }
+.add-nav span { position: absolute; top: 18px; font-size: 17px; color: var(--ios-blue); }
+.add-nav b { position: absolute; left: 0; width: 390px; top: 18px; text-align: center; font-size: 17px; font-weight: 600; color: #000; }
+.add-card { position: relative; margin: 14px 16px 0; height: 92px; border-radius: 12px; background: #fff; }
+.add-card img { position: absolute; left: 14px; top: 16px; width: 60px; height: 60px; border-radius: 14px; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.12); }
+.add-card .an { position: absolute; left: 90px; top: 18px; width: 270px; padding-bottom: 9px; font-size: 17px; color: #000; border-bottom: 0.5px solid rgba(60,60,67,0.25); }
+.add-card .au { position: absolute; left: 90px; top: 56px; font-size: 15px; color: #8a8a8e; }
+.add-note { margin: 10px 32px 0; font-size: 13px; line-height: 1.38; color: #6d6d72; }
+.add-tog { position: relative; margin: 22px 16px 0; height: 50px; line-height: 50px; padding-left: 16px; border-radius: 12px; background: #fff; font-size: 17px; color: #000; }
+.add-tog i { position: absolute; right: 14px; top: 9px; width: 51px; height: 31px; border-radius: 16px; background: #34c759; }
+.add-tog i::after { content: ""; position: absolute; right: 2px; top: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+/* solid wallpaper in the kiwi logo's skin brown */
+.ph-home { position: absolute; inset: 0; z-index: 36; overflow: hidden; background: #95683d; }
+.hm-ic { position: absolute; width: 62px; height: 62px; border-radius: 15px; background: rgba(255,255,255,0.26); box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.4); }
+.hm-lbl { position: absolute; width: 90px; text-align: center; font-size: 12px; font-weight: 500; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+.hm-dock { position: absolute; left: 12px; bottom: 12px; width: 366px; height: 92px; border-radius: 34px; background: rgba(255,255,255,0.2); box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.35); }
+.hm-kiwi { position: absolute; width: 62px; height: 62px; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.hm-kiwi img { width: 62px; height: 62px; display: block; }
+.touch { position: absolute; left: 0; top: 0; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(120,120,120,0.30); border: 2px solid rgba(255,255,255,0.85); box-shadow: 0 2px 10px rgba(0,0,0,0.18); z-index: 60; }
+
+/* ── Right-hand copy beside the phone ──────────────────────────────────── */
+.rt { position: absolute; left: 744px; width: 660px; }
+.rt-pill { display: inline-block; height: 34px; line-height: 34px; padding: 0 15px; border-radius: 999px; background: var(--brand); color: #213a00; font-size: 16px; font-weight: 800; letter-spacing: 0.12em; }
+.rt-h { margin-top: 14px; font-size: 62px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.04; white-space: nowrap; }
+.rt-p { margin-top: 16px; font-size: 26px; line-height: 1.4; color: var(--muted); white-space: nowrap; }
+.bignote { position: relative; margin-top: 44px; width: 620px; height: 132px; border-radius: 34px; background: #f2f2f2; font-family: var(--ios); transform-origin: 50% 0; }
+.bignote img { position: absolute; left: 26px; top: 26px; width: 80px; height: 80px; border-radius: 19px; }
+.bignote .bt { position: absolute; left: 128px; top: 30px; font-size: 32px; font-weight: 600; letter-spacing: -0.01em; color: #111; white-space: nowrap; }
+.bignote .bb { position: absolute; left: 128px; top: 74px; font-size: 26px; color: #3c3c43; white-space: nowrap; }
+.bignote .bn { position: absolute; right: 30px; top: 34px; font-size: 20px; color: #8a8a8e; }
+.tour-item { position: relative; height: 108px; padding-left: 92px; }
+.tour-item .ic { position: absolute; left: 0; top: 18px; width: 68px; height: 68px; border-radius: 19px; background: #f4f4f4; }
+.tour-item .ic svg { position: absolute; left: 17px; top: 17px; width: 34px; height: 34px; fill: none; stroke: #737373; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.tour-item .nm { padding-top: 16px; font-size: 38px; font-weight: 800; letter-spacing: -0.03em; }
+.tour-item .ds { margin-top: 2px; font-size: 23px; color: var(--muted); white-space: nowrap; }
+.tour-item .ds b { color: var(--warning); font-weight: 700; }
+.tour-bar { position: absolute; left: -22px; top: 26px; width: 5px; height: 56px; border-radius: 3px; background: var(--brand); }
+.step { position: relative; height: 74px; padding-left: 68px; font-size: 28px; font-weight: 600; line-height: 74px; white-space: nowrap; color: var(--text-strong); }
+.step i { position: absolute; left: 0; top: 14px; width: 46px; height: 46px; border-radius: 50%; background: #f1f1f1; color: #737373; font-style: normal; font-size: 21px; font-weight: 800; line-height: 46px; text-align: center; }
+.step.on i { background: var(--brand); color: #213a00; }
+.step em { font-style: normal; color: var(--brand-ink); }
+
+/* ── Preview controls (hidden when rendering) ─────────────────────────── */
+#controls { position: fixed; left: 0; right: 0; bottom: 0; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: #111; color: #ddd; font: 13px/1 ui-monospace, Menlo, monospace; z-index: 10; }
+#controls button { width: 70px; height: 28px; border-radius: 6px; border: 0; background: #333; color: #fff; font: inherit; cursor: pointer; }
+#controls input { flex: 1; }
+body.render #controls { display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- 1 · Intro lockup -->
+  <div class="layer" id="s-intro">
+    <div class="lockup" id="intro-lockup">
+      <div class="lk-row">
+        <img class="lk-kiwi" id="intro-kiwi" src="assets/kiwi.svg" alt="">
+        <div class="lk-word" id="intro-word">kiwiboard</div>
+      </div>
+      <div class="lk-slogan" id="intro-slogan">A fresh cut of the market.</div>
+    </div>
+  </div>
+
+  <!-- 2–4 · Indicators, regime score and the chart replay -->
+  <div class="layer" id="main">
+    <div class="layer" id="s-inds">
+      <div class="h1" id="i-title" style="top:206px">11 market indicators</div>
+      <div class="h1" id="m-title" style="top:206px">One Market Regime score</div>
+      <div id="tiles"></div>
+      <div class="ladder" id="ladder"></div>
+    </div>
+
+    <div class="layer" id="s-chart">
+      <canvas id="chart" width="1440" height="1080"></canvas>
+      <div class="ch-title" id="ch-title">Regime vs. Nasdaq</div>
+      <div class="ring" id="ring-mar"></div>
+      <div class="ring" id="ring-nov"></div>
+      <div class="ring risk" id="ring-jun"></div>
+      <div class="co buy" id="co-mar"><small>Mar 30</small><b>Buy +6.4</b></div>
+      <div class="co risk" id="co-jun"><small>Jun 15</small><b>Caution −4.4</b></div>
+      <div class="co buy" id="co-nov"><small>Nov 20</small><b>Buy +8.6</b></div>
+      <div class="gain" id="gain">+32.7%</div>
+      <div class="toast" id="toast"><img src="assets/app-icon-light.png" alt=""><div class="tt" id="toast-t">Regime: Buy (+6.7)</div><div class="tn">now</div></div>
+      <div class="ch-foot" id="ch-foot">Daily scores rebuilt from kiwiboard data · Not investment advice</div>
+    </div>
+  </div>
+
+  <!-- 5–8 · Phone -->
+  <div class="layer" id="s-phone">
+    <div class="rt" id="rt-new" style="top:442px">
+      <span class="rt-pill">NEW</span>
+      <div class="rt-h">Now on your phone</div>
+      <div class="rt-p">Installs as an app on iPhone and Android.</div>
+    </div>
+    <div class="rt" id="rt-alerts" style="top:384px">
+      <div class="rt-h">Regime alerts</div>
+      <div class="rt-p">A push the moment the regime turns.</div>
+      <div class="bignote" id="bignote"><img src="assets/app-icon-light.png" alt=""><div class="bt">Regime: Buy (+4.7)</div><div class="bb">Up from Cautious Buy</div><div class="bn">now</div></div>
+    </div>
+    <div class="rt" id="rt-tour" style="top:322px"></div>
+    <div class="rt" id="rt-install" style="top:340px">
+      <div class="rt-h">Add to Home Screen</div>
+      <div style="margin-top:30px" id="steps"></div>
+    </div>
+
+    <div id="phone">
+      <div class="ph-body"></div>
+      <div class="ph-btn" style="left:-19px;top:150px;height:34px"></div>
+      <div class="ph-btn" style="left:-19px;top:212px;height:62px"></div>
+      <div class="ph-btn" style="left:-19px;top:290px;height:62px"></div>
+      <div class="ph-btn" style="left:405px;top:240px;height:96px"></div>
+      <div class="ph-screen" id="ph-screen">
+        <div class="ph-app" id="ph-app">
+          <div class="sbar" id="sbar-app"></div>
+          <div id="ph-pages"></div>
+          <div class="tabbar" id="tabbar"></div>
+          <div class="spot" id="spot"></div>
+          <div class="lift" id="lift"></div>
+          <div class="ph-dim" id="ph-dim"></div>
+          <div class="dlg" id="dlg">
+            <div class="dlg-head"><h3>Settings</h3><span class="dlg-x" id="dlg-x">&times;</span></div>
+            <div class="st-h">Regime alerts</div>
+            <p class="ad-lead">Get a push notification when the Poor2Rich market regime moves into a band you pick.</p>
+            <div class="ad-row">
+              <div><b>This device</b><div class="ad-sub"><span id="dlg-s-off">Alerts are off.</span><span id="dlg-s-on">Alerts are on.</span></div></div>
+              <div class="ad-btn primary" id="dlg-toggle"><span id="dlg-b-off">Turn on</span><span id="dlg-b-on" style="color:#171717">Turn off</span></div>
+            </div>
+            <fieldset class="ad-bands"><legend>Alert me when the regime becomes</legend>
+              <label><span class="cb on"></span>Strong Buy</label><label><span class="cb on"></span>Buy</label>
+              <label><span class="cb on"></span>Cautious Buy</label><label><span class="cb"></span>Neutral</label>
+              <label><span class="cb"></span>Caution</label><label><span class="cb on"></span>Risk</label>
+              <label><span class="cb on"></span>Strong Risk</label>
+            </fieldset>
+            <div class="ad-row"><div class="ad-btn" id="dlg-test">Send test notification</div></div>
+          </div>
+          <div class="ios-dim" id="ios-dim"></div>
+          <div class="ios-alert" id="ios-alert">
+            <div class="ia-t">“kiwiboard” Would Like to<br>Send You Notifications</div>
+            <div class="ia-m">Notifications may include alerts, sounds and icon badges. These can be configured in Settings.</div>
+            <div class="ia-b"><div id="ios-deny">Don’t Allow</div><div id="ios-allow">Allow</div></div>
+          </div>
+        </div>
+
+        <div class="ph-safari" id="ph-safari">
+          <div class="sbar" id="sbar-sf"></div>
+          <div class="ph-page" id="sf-page"><img src="assets/news.png" alt=""><div class="ph-hdr" style="background-image:url(assets/news.png)"></div></div>
+          <div class="sf-tab" id="sf-tab"></div>
+          <div class="sf-bar" id="sf-bar">
+            <div class="sf-url">
+              <svg style="left:14px" width="24" height="22" viewBox="0 0 24 22" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="3" width="20" height="16" rx="3"/><path d="M6 8h6M6 12h9M6 16h5"/></svg>
+              <div class="host">poortrader.com</div>
+              <svg style="right:14px" width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 11a6.5 6.5 0 1 1-2-4.7"/><path d="M15.8 2.8v3.8h-3.8"/></svg>
+            </div>
+            <div class="sf-tools">
+              <svg style="left:27px" viewBox="0 0 28 28"><path d="M17 5L8 14l9 9"/></svg>
+              <svg style="left:105px;opacity:.35" viewBox="0 0 28 28"><path d="M11 5l9 9-9 9"/></svg>
+              <svg style="left:181px" id="sf-share" viewBox="0 0 28 28"><path d="M9.5 11H7.5v13h13V11h-2"/><path d="M14 3v14"/><path d="M9.5 7.5L14 3l4.5 4.5"/></svg>
+              <svg style="left:258px" viewBox="0 0 28 28"><path d="M4 6.5c3.5-1.5 6.8-1 10 1.5v15c-3.2-2.5-6.5-3-10-1.5z"/><path d="M24 6.5c-3.5-1.5-6.8-1-10 1.5v15c3.2-2.5 6.5-3 10-1.5z"/></svg>
+              <svg style="left:335px" viewBox="0 0 28 28"><rect x="8" y="8" width="15" height="15" rx="3"/><path d="M5 18.5V7a2 2 0 0 1 2-2h11.5"/></svg>
+            </div>
+          </div>
+          <div class="sheet-dim" id="sh-dim"></div>
+          <div class="sheet" id="sh-share" style="top:300px;height:544px">
+            <div class="sh-head"><img src="assets/app-icon-light.png" alt=""><div class="n">kiwiboard</div><div class="u">poortrader.com</div><div class="x"></div></div>
+            <div class="sh-group">
+              <div class="sh-row">Copy<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 4.5H6.5a2 2 0 0 0-2 2V16"/></svg></div>
+              <div class="sh-row">Add to Reading List<svg viewBox="0 0 24 24"><circle cx="7" cy="14" r="3.5"/><circle cx="17" cy="14" r="3.5"/><path d="M10.5 14h3"/></svg></div>
+              <div class="sh-row">Add Bookmark<svg viewBox="0 0 24 24"><path d="M3.5 6c3-1.3 5.8-.9 8.5 1.3v12.5c-2.7-2.2-5.5-2.6-8.5-1.3z"/><path d="M20.5 6c-3-1.3-5.8-.9-8.5 1.3v12.5c2.7-2.2 5.5-2.6 8.5-1.3z"/></svg></div>
+              <div class="sh-row">Add to Favorites<svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg></div>
+            </div>
+            <div class="sh-group">
+              <div class="sh-row">Find on Page<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg></div>
+              <div class="sh-row" id="sh-addhome">Add to Home Screen<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12 8v8M8 12h8"/></svg></div>
+              <div class="sh-row">Markup<svg viewBox="0 0 24 24"><path d="M4 20l1-4.5L16 4.5a2.1 2.1 0 0 1 3 3L8 18.5z"/><path d="M14 6.5l3 3"/></svg></div>
+            </div>
+          </div>
+          <div class="sheet" id="sh-add" style="top:54px;height:790px">
+            <div class="add-nav"><span style="left:16px">Cancel</span><b>Add to Home Screen</b><span style="right:16px;font-weight:600" id="add-btn">Add</span></div>
+            <div class="add-card"><img src="assets/app-icon-light.png" alt=""><div class="an">kiwiboard</div><div class="au">poortrader.com</div></div>
+            <div class="add-note">An icon will be added to your Home Screen so you can quickly access this website.</div>
+            <div class="add-tog">Open as Web App<i></i></div>
+          </div>
+        </div>
+
+        <div class="ph-home" id="ph-home">
+          <div class="sbar white" id="sbar-home"></div>
+          <div id="hm-icons"></div>
+          <div class="hm-dock"></div>
+          <div class="hm-kiwi" id="hm-kiwi"><img src="assets/app-icon-light.png" alt=""></div>
+          <div class="hm-lbl" id="hm-kiwi-lbl">kiwiboard</div>
+        </div>
+
+        <div class="banner" id="banner"><img src="assets/app-icon-light.png" alt=""><div class="bt">Regime: Buy (+4.7)</div><div class="bb">Up from Cautious Buy</div><div class="bn">now</div></div>
+        <div class="touch" id="touch"></div>
+        <div class="ph-island"></div>
+        <div class="ph-homebar" id="homebar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The regime card: centre of the merge, live readout of the replay, then it lands in the phone -->
+  <div id="rcard">
+    <div id="rc-inner">
+      <div class="rc-head" id="rc-head"><div class="rc-title">Market Regime</div><div class="rc-date" id="rc-date">Nov 20, 2026</div></div>
+      <div class="rc-band" id="rc-band">Neutral</div>
+      <div class="rc-scoreline"><span class="rc-score" id="rc-score">+0.0</span><span class="rc-scorelbl">score</span></div>
+      <div class="rc-bar" id="rc-bar">
+        <i style="background:#c94444"></i><i style="background:#d96666"></i><i style="background:#deb0a8"></i><i style="background:#b8b8b8"></i><i style="background:#c4d88d"></i><i style="background:#93bd40"></i><i style="background:#6a961f"></i>
+        <div class="rc-ptr" id="rc-ptr"></div>
+      </div>
+      <div class="rc-barlbl"><span>Risk</span><span>Neutral</span><span>Buy</span></div>
+    </div>
+  </div>
+  <div id="flys"></div>
+
+  <!-- 9 · End card -->
+  <div class="layer" id="s-end" style="background:#141414">
+    <div class="lockup dark" id="end-lockup">
+      <div class="lk-row">
+        <img class="lk-kiwi" id="end-kiwi" src="assets/kiwi.svg" alt="">
+        <div class="lk-word" id="end-word">kiwiboard</div>
+      </div>
+      <div class="lk-slogan" id="end-slogan">A fresh cut of the market.</div>
+      <div class="lk-url" id="end-url">poortrader.com</div>
+    </div>
+  </div>
+</div>
+
+<div id="controls"><button id="play">Play</button><span id="tlabel">0.00 s</span><input type="range" id="scrub" min="0" max="60" step="0.01" value="0"></div>
+
+<script src="assets/data.js"></script>
+<script>
+(() => {
+"use strict";
+const D = window.PROMO_DATA;
+const $ = (s) => document.querySelector(s);
+const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
+const lerp = (a, b, u) => a + (b - a) * u;
+const P = (t, a, b) => clamp((t - a) / (b - a));
+const E = {
+  out: (u) => 1 - (1 - u) ** 3,
+  in: (u) => u ** 3,
+  inOut: (u) => (u < 0.5 ? 4 * u ** 3 : 1 - (-2 * u + 2) ** 3 / 2),
+  outBack: (u) => { const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * (u - 1) ** 3 + c1 * (u - 1) ** 2; },
+  sine: (u) => -(Math.cos(Math.PI * u) - 1) / 2,
+  // damped spring 0 → 1 with a playful overshoot
+  spring: (u) => (u <= 0 ? 0 : u >= 1 ? 1 : 1 - Math.exp(-6.5 * u) * Math.cos(12 * u)),
+};
+const win = (t, a, b, fi = 0.35, fo = 0.35) => Math.min(E.out(P(t, a, a + fi)), 1 - E.in(P(t, b - fo, b)));
+const bump = (t, c, w) => clamp(1 - Math.abs(t - c) / w);
+
+// Style writes are cached so a frame only touches what changed.
+function S(el, o) {
+  const c = el.__c || (el.__c = {});
+  for (const k in o) { const v = o[k]; if (c[k] !== v) { c[k] = v; el.style[k] = v; } }
+}
+function O(el, op, extra) {
+  op = Math.round(clamp(op) * 1000) / 1000;
+  S(el, Object.assign({ opacity: String(op), visibility: op <= 0 ? "hidden" : "visible" }, extra || {}));
+}
+const tf = (x, y, s = 1, r = 0) => `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) scale(${s.toFixed(4)})${r ? ` rotate(${r.toFixed(2)}deg)` : ""}`;
+const blur = (b) => (b > 0.05 ? `blur(${b.toFixed(2)}px)` : "none");
+function T(el, s) { if (el.__t !== s) { el.__t = s; el.textContent = s; } }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtDate = (d) => `${MONTHS[+d.slice(5, 7) - 1]} ${+d.slice(8, 10)}, ${d.slice(0, 4)}`;
+const fmtScore = (s) => (s < -0.0001 ? "−" : "+") + Math.abs(s).toFixed(1);
+const fmtPx = (v) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const BANDS = [["Strong Risk", -13.5, -9, "#c94444"], ["Risk", -9, -4.5, "#d96666"], ["Caution", -4.5, -1.5, "#deb0a8"], ["Neutral", -1.5, 1.5, "#b8b8b8"],
+  ["Cautious Buy", 1.5, 4.5, "#c4d88d"], ["Buy", 4.5, 9, "#93bd40"], ["Strong Buy", 9, 13.5, "#6a961f"]];
+const bandOf = (s) => (s >= 9 ? "Strong Buy" : s >= 4.5 ? "Buy" : s >= 1.5 ? "Cautious Buy" : s >= -1.5 ? "Neutral" : s >= -4.5 ? "Caution" : s >= -9 ? "Risk" : "Strong Risk");
+const bandInk = (b) => (/Buy/.test(b) ? "#16803d" : b === "Neutral" ? "#737373" : "#dc4444");
+
+// ═════════════════════════ Timeline (seconds) ═════════════════════════
+const TL = {
+  dur: 56.65,
+  introOut: [1.5, 1.85],
+  indIn: 1.8, tilesIn: 1.95,                // the last tile lands at ≈3.05 s
+  badges: 3.75, indOut: 3.65, mergeIn: 3.8, // 0.7 s after the last tile
+  converge: 5.4, cardIn: 6.0, ladder: 8.5, mergeOut: 10.05, // the points stay readable, then drop in one at a time
+  chart: 10.25, chartEnd: 27.85,            // replay; see KF for the pacing inside
+  newTxt: [28.85, 30.95],                   // the card lands in the phone first
+  alerts: 30.85, tapAlerts: 31.45, dlgIn: 31.6, tapTurnOn: 32.55, iosIn: 32.75, tapAllow: 33.75, alertsOn: 33.95, tapClose: 34.75, dlgOut: 34.9,
+  bannerIn: 35.25, bannerOut: 37.3,
+  tour: 37.85,
+  install: 45.95, tapShare: 46.8, shareIn: 46.9, tapAddHome: 47.9, addIn: 48.0, tapAdd: 49.05, homeIn: 49.15, kiwiPop: 49.65, tapKiwi: 50.7, launch: 50.8,
+  end: 52.65,
+};
+// Page tour: [page, start, end]
+const TOUR = [[0, 37.85, 39.15], [1, 39.15, 41.65], [2, 41.65, 42.95], [3, 42.95, 45.95]];
+// Positions on the captured pages (page px, from the capture run)
+const WL_FOCUS = [16, 129.4, 358, 158.6], WL_ITEM = [31, 206, 328, 67];
+const NEWS_S0 = 768.2 - 61 - 8, NEWS_S1 = 1812.7 - 61 - 6, NEWS_S2 = 2220.2 - 61 - 150, NEWS_BTC = [17, 905.1, 357, 47];
+const APP_CARD = { x: 16, band: 269.4 }; // Market page regime card: left edge and the band label's top
+
+// ═════════════════════════ Build the DOM ═════════════════════════
+const PH = { x: 250, y: 118, w: 390, h: 844 };
+
+// Indicator tiles: 4 + 4 + 3, centred. Name and a year of history, nothing else.
+const NAMES = { vix: "VIX", us_high_yield_spread: "HY OAS", sp500_pe_ratio: "S&P 500 PE", cnn_fear_greed_index: "Fear & Greed", cnn_put_call_options: "Put/Call",
+  nasdaq100_above_20d_ma: "NDX breadth", yc_10y_2y: "10Y–2Y curve", bofa_bull_bear: "AAII sentiment", sp500_rsi: "S&P 500 RSI", nasdaq100_pe_ratio: "Nasdaq 100 PE", cboe_skew: "CBOE SKEW" };
+const TW = 300, TH = 150, GX = 24, GY = 22, TOP = 350;
+const tileEls = [], tilePos = [];
+D.tiles.forEach((tile, i) => {
+  const row = Math.floor(i / 4), col = i % 4, inRow = row < 2 ? 4 : 3;
+  const rowW = inRow * TW + (inRow - 1) * GX;
+  const x = (1440 - rowW) / 2 + col * (TW + GX), y = TOP + row * (TH + GY);
+  const el = document.createElement("div");
+  el.className = "tile";
+  const n = tile.spark.length;
+  const pts = tile.spark.map((v, k) => [k / (n - 1) * TW, 76 - v * 54]);
+  const line = pts.map((p, k) => (k ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const last = pts[pts.length - 1];
+  el.innerHTML = `<div class="t-name">${(NAMES[tile.id] || tile.name).replace("&", "&amp;")}</div>` +
+    `<span class="t-pts${tile.pts ? "" : " zero"}">${tile.pts ? "+" + tile.pts.toFixed(1) : "0"}</span>` +
+    `<svg class="t-spark" viewBox="0 0 ${TW} 84" preserveAspectRatio="none"><defs><linearGradient id="g${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a3cf42" stop-opacity="0.3"/><stop offset="1" stop-color="#a3cf42" stop-opacity="0"/></linearGradient></defs>` +
+    `<path d="${line} L${TW} 84 L0 84 Z" fill="url(#g${i})"/><path d="${line}" fill="none" stroke="#729e2c" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>` +
+    `<circle cx="${(last[0] - 3).toFixed(1)}" cy="${last[1].toFixed(1)}" r="4.2" fill="#466a12"/></svg>`;
+  $("#tiles").appendChild(el);
+  tileEls.push({ el, pts: el.querySelector(".t-pts"), spark: el.querySelector(".t-spark"), fire: tile.pts > 0 });
+  tilePos.push([x, y]);
+});
+const flyEls = [];
+tileEls.forEach((t, i) => {
+  if (!t.fire) return;
+  const f = document.createElement("div");
+  f.className = "fly";
+  f.textContent = "+" + D.tiles[i].pts.toFixed(1);
+  $("#flys").appendChild(f);
+  flyEls.push({ el: f, i, val: D.tiles[i].pts, depart: TL.cardIn + 0.45 + flyEls.length * 0.28 });
+});
+flyEls.forEach((f) => (f.arrive = f.depart + 0.8));
+
+// Band ladder: names only.
+const ladEls = BANDS.map(([n, , , col]) => {
+  const el = document.createElement("div");
+  el.className = "lad";
+  el.innerHTML = `<i style="background:${col}"></i><b>${n}</b>`;
+  $("#ladder").appendChild(el);
+  return el;
+});
+
+// Phone: status bars.
+const SB = `<div class="tm">9:41</div>
+  <svg style="left:282px" width="19" height="12" viewBox="0 0 19 12" fill="currentColor"><rect x="0" y="8" width="3.2" height="4" rx="1"/><rect x="5" y="5.5" width="3.2" height="6.5" rx="1"/><rect x="10" y="3" width="3.2" height="9" rx="1"/><rect x="15" y="0" width="3.2" height="12" rx="1"/></svg>
+  <svg style="left:306px" width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><path d="M8.5 2.3c2.4 0 4.6.9 6.3 2.5l1.2-1.2A10.6 10.6 0 0 0 8.5.6 10.6 10.6 0 0 0 1 3.6l1.2 1.2a8.9 8.9 0 0 1 6.3-2.5z"/><path d="M8.5 5.6c1.5 0 2.9.6 3.9 1.6l1.2-1.2a7.2 7.2 0 0 0-10.2 0l1.2 1.2c1-1 2.4-1.6 3.9-1.6z"/><path d="M8.5 8.9c.6 0 1.2.2 1.6.7l-1.6 1.7-1.6-1.7c.4-.5 1-.7 1.6-.7z"/></svg>
+  <svg style="left:330px" width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="19" height="9" rx="2" fill="currentColor"/><path d="M24 4.3v4.4c.9-.3 1.5-1.2 1.5-2.2s-.6-1.9-1.5-2.2z" fill="currentColor" fill-opacity="0.45"/></svg>`;
+["#sbar-app", "#sbar-sf", "#sbar-home"].forEach((s) => ($(s).innerHTML = SB));
+
+// Phone: pages, each with a sticky copy of its own header strip.
+const PAGES = ["market", "watchlist", "global", "news"];
+const pageEls = PAGES.map((name) => {
+  const el = document.createElement("div");
+  el.className = "ph-page";
+  el.innerHTML = `<img src="assets/${name}.png" alt=""><div class="ph-hdr" style="background-image:url(assets/${name}.png)"></div>`;
+  $("#ph-pages").appendChild(el);
+  return { el, img: el.querySelector("img") };
+});
+// Safari shows the News page exactly where the tour left it.
+S($("#sf-page img"), { transform: `translateY(${(-NEWS_S2).toFixed(2)}px)` });
+S($("#lift"), { backgroundImage: "url(assets/watchlist.png)", width: WL_ITEM[2] + "px", height: WL_ITEM[3] + "px", backgroundPosition: `${-WL_ITEM[0]}px ${-WL_ITEM[1]}px` });
+
+// Tab bar (same icons as the app).
+const TAB_ICONS = [
+  '<path d="M4.5 16.5a7.5 7.5 0 1 1 15 0"/><path d="M12 16.5l3.6-4.6"/><circle cx="12" cy="16.5" r="1.1"/>',
+  '<path d="M12 4l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16.4l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/>',
+  '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5s1.2-6.2 3.6-8.5z"/>',
+  '<path d="M4 19.5h16"/><path d="M5 15l4.3-4.4 3.3 3 6.4-7"/><path d="M15.4 6.6H19v3.6"/>',
+  '<path d="M3.5 12h4l2.5-6 4 12 2.5-6h4"/>',
+];
+const TAB_NAMES = ["Market", "Watchlist", "Global", "News", "Signals"];
+function buildTabbar(host) {
+  const btns = TAB_NAMES.map((n, k) => {
+    const b = document.createElement("div");
+    b.className = "tb-btn";
+    b.style.left = (4 + k * 76.4) + "px";
+    b.innerHTML = `<svg viewBox="0 0 24 24">${TAB_ICONS[k]}</svg><span>${n}</span>`;
+    host.appendChild(b);
+    return b;
+  });
+  const ind = document.createElement("div");
+  ind.className = "tb-ind";
+  host.appendChild(ind);
+  return { btns, ind };
+}
+const tabbar = buildTabbar($("#tabbar"));
+const sfTab = buildTabbar($("#sf-tab"));
+function setTabs(tb, x) {
+  const k = Math.round(x);
+  tb.btns.forEach((b, i) => {
+    const on = i === k;
+    S(b, { color: on ? "#171717" : "#737373", fontWeight: on ? "600" : "500" });
+    S(b.firstChild, { stroke: on ? "#466a12" : "currentColor" });
+  });
+  S(tb.ind, { left: (4 + x * 76.4 + 76.4 * 0.3).toFixed(2) + "px" });
+}
+
+// Right-hand copy: page tour and install steps.
+const TOUR_COPY = [["Market", "Regime first, then the key numbers"], ["Watchlist", "<b>Special Focus</b> flags possible uptrends in your list"],
+  ["Global", "World indices at a glance"], ["News", "Crypto, futures and the news behind them"]];
+const tourEls = TOUR_COPY.map(([n, d], k) => {
+  const el = document.createElement("div");
+  el.className = "tour-item";
+  el.innerHTML = `<div class="ic"><svg viewBox="0 0 24 24">${TAB_ICONS[k]}</svg></div><div class="nm">${n}</div><div class="ds">${d}</div>`;
+  $("#rt-tour").appendChild(el);
+  return { el, ic: el.querySelector(".ic"), svg: el.querySelector("svg") };
+});
+const tourBar = document.createElement("div");
+tourBar.className = "tour-bar";
+$("#rt-tour").appendChild(tourBar);
+const STEPS = ["Open <em>poortrader.com</em> in Safari", "Tap Share", "Tap Add to Home Screen", "Open it like any app"];
+const stepEls = STEPS.map((s, k) => {
+  const el = document.createElement("div");
+  el.className = "step";
+  el.innerHTML = `<i>${k + 1}</i>${s}`;
+  $("#steps").appendChild(el);
+  return el;
+});
+
+// Home Screen: placeholder icons, the new kiwiboard icon in the next free slot.
+const HX = (c) => 28 + c * 90, HY = (r) => 74 + r * 104;
+for (let r = 0; r < 5; r++) for (let c = 0; c < 4; c++) {
+  if (r === 4 && c >= 2) continue;
+  const ic = document.createElement("div");
+  ic.className = "hm-ic";
+  ic.style.left = HX(c) + "px"; ic.style.top = HY(r) + "px";
+  $("#hm-icons").appendChild(ic);
+}
+for (let c = 0; c < 4; c++) {
+  const ic = document.createElement("div");
+  ic.className = "hm-ic";
+  ic.style.left = (30 + c * 88) + "px"; ic.style.top = (844 - 12 - 92 + 15) + "px";
+  $("#hm-icons").appendChild(ic);
+}
+const KIWI_SLOT = { x: HX(2), y: HY(4) };
+S($("#hm-kiwi"), { left: KIWI_SLOT.x + "px", top: KIWI_SLOT.y + "px" });
+S($("#hm-kiwi-lbl"), { left: (KIWI_SLOT.x - 14) + "px", top: (KIWI_SLOT.y + 67) + "px" });
+
+// ═════════════════════════ Geometry measured once ═════════════════════════
+const G = {};
+function centerIn(el, host) {
+  if (el instanceof SVGElement) {
+    const r = el.getBoundingClientRect(), h = host.getBoundingClientRect(), k = host.offsetWidth / h.width;
+    return [(r.left - h.left + r.width / 2) * k, (r.top - h.top + r.height / 2) * k];
+  }
+  let x = 0, y = 0, e = el;
+  const w = el.offsetWidth, h = el.offsetHeight;
+  while (e && e !== host) { x += e.offsetLeft; y += e.offsetTop; e = e.offsetParent; }
+  return [x + w / 2, y + h / 2];
+}
+// Split a wordmark into letters placed exactly where the shaped text put them (keeps the kerning).
+function splitWord(el) {
+  const text = el.textContent, node = el.firstChild;
+  const box = el.getBoundingClientRect(), k = el.offsetWidth / box.width;
+  const pos = [...text].map((_, i) => { const r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + 1); return (r.getBoundingClientRect().left - box.left) * k; });
+  S(el, { width: el.offsetWidth + "px", height: el.offsetHeight + "px" });
+  el.textContent = "";
+  return [...text].map((ch, i) => { const s = document.createElement("span"); s.textContent = ch; s.style.left = pos[i].toFixed(2) + "px"; el.appendChild(s); return s; });
+}
+function measure() {
+  const scr = $("#ph-screen");
+  G.turnOn = centerIn($("#dlg-toggle"), scr);
+  G.close = centerIn($("#dlg-x"), scr);
+  G.allow = centerIn($("#ios-allow"), scr);
+  G.share = centerIn($("#sf-share"), scr);
+  G.addHome = centerIn($("#sh-addhome"), scr);
+  G.add = centerIn($("#add-btn"), scr);
+  G.kiwi = [KIWI_SLOT.x + 31, KIWI_SLOT.y + 31];
+  G.score = [$("#rc-score").offsetLeft, $("#rc-score").offsetTop];
+  G.bandTop = $("#rc-band").offsetTop;
+  G.tilePts = tileEls.map((t, i) => [tilePos[i][0] + 300 - 16 - t.pts.offsetWidth / 2, tilePos[i][1] + 17 + 16]);
+  G.bar = $("#rc-bar").offsetWidth;
+  G.dlgH = $("#dlg").offsetHeight;
+  G.introLetters = splitWord($("#intro-word"));
+  G.endLetters = splitWord($("#end-word"));
+}
+
+// ═════════════════════════ Scenes 1 + 9 · Logo pop ═════════════════════════
+function popLockup(t, a, kiwi, letters, slogan, url) {
+  const uk = P(t, a, a + 0.8);
+  O(kiwi, P(t, a, a + 0.08), { transform: `scale(${E.spring(uk).toFixed(4)}) rotate(${(-22 * Math.exp(-5 * uk) * Math.cos(11 * uk)).toFixed(2)}deg)` });
+  letters.forEach((s, i) => {
+    const b = a + 0.2 + i * 0.045;
+    const u = P(t, b, b + 0.42);
+    const k = E.outBack(u);
+    O(s, E.out(P(t, b, b + 0.12)), { transform: `translateY(${lerp(52, 0, k).toFixed(2)}px) scale(${lerp(0.35, 1, k).toFixed(4)})` });
+  });
+  const us = E.out(P(t, a + 0.75, a + 1.15));
+  O(slogan, us, { transform: `translateY(${lerp(14, 0, us).toFixed(2)}px)` });
+  if (url) { const uu = E.out(P(t, a + 1.0, a + 1.45)); O(url, uu, { transform: `translateY(${lerp(12, 0, uu).toFixed(2)}px)` }); }
+}
+function renderIntro(t) {
+  const L = $("#s-intro");
+  if (t > TL.introOut[1] + 0.05) { O(L, 0); return; }
+  O(L, 1);
+  popLockup(t, 0, $("#intro-kiwi"), G.introLetters, $("#intro-slogan"));
+  const ex = P(t, TL.introOut[0], TL.introOut[1]);
+  O($("#intro-lockup"), 1 - E.in(ex), { transform: `scale(${lerp(1, 0.92, E.in(ex)).toFixed(4)})`, filter: blur(lerp(0, 8, E.in(ex))) });
+}
+function renderEnd(t) {
+  const L = $("#s-end");
+  if (t < TL.end) { O(L, 0); return; }
+  const u = E.inOut(P(t, TL.end, TL.end + 0.9));
+  O(L, 1, { clipPath: `circle(${lerp(0, 1220, u).toFixed(1)}px at ${PH.x + PH.w / 2}px 540px)` });
+  popLockup(t, TL.end + 0.5, $("#end-kiwi"), G.endLetters, $("#end-slogan"), $("#end-url"));
+  S($("#end-lockup"), { transform: `scale(${(1 + 0.016 * E.sine(P(t, TL.end + 1.6, TL.dur))).toFixed(4)})` });
+}
+
+// ═════════════════════════ Scenes 2–3 · Indicators → one score ═════════════════════════
+function title(t, el, tIn, tOut) {
+  const u = E.out(P(t, tIn, tIn + 0.45));
+  O(el, Math.min(u, 1 - E.in(P(t, tOut, tOut + 0.3))), { transform: `translateY(${lerp(18, 0, u).toFixed(2)}px)`, filter: blur(lerp(6, 0, u)) });
+}
+function mergeScore(t) {
+  let s = 0;
+  for (const f of flyEls) s += f.val * E.out(P(t, f.arrive - 0.05, f.arrive + 0.4));
+  return s;
+}
+function renderIndicators(t) {
+  const L = $("#s-inds");
+  if (t < TL.indIn - 0.1 || t > TL.chart + 0.4) { O(L, 0); flyEls.forEach((f) => O(f.el, 0)); return; }
+  O(L, 1);
+  title(t, $("#i-title"), TL.indIn, TL.indOut);
+  title(t, $("#m-title"), TL.mergeIn, TL.mergeOut);
+  tileEls.forEach((T_, i) => {
+    const a = TL.tilesIn + i * 0.06;
+    const u = E.out(P(t, a, a + 0.5));
+    const b = TL.badges + i * 0.05;
+    const ub = P(t, b, b + 0.4);
+    const gone = T_.fire ? P(t, TL.converge - 0.02, TL.converge) : 0;
+    O(T_.pts, E.out(ub) * (1 - gone), { transform: `scale(${lerp(0.5, 1, E.outBack(ub)).toFixed(3)})` });
+    O(T_.spark, E.out(P(t, a + 0.1, a + 0.6)));
+    const dim = T_.fire ? 1 : lerp(1, 0.4, E.out(P(t, b + 0.1, b + 0.5)));
+    const glow = T_.fire ? E.out(P(t, b, b + 0.4)) : 0;
+    const c0 = TL.converge + i * 0.035;
+    const uc = E.inOut(P(t, c0, c0 + 0.9));
+    const [x0, y0] = tilePos[i];
+    const x = lerp(x0, 720 - 150, uc), y = lerp(y0, 520 - 75, uc) + lerp(28, 0, u);
+    const sc = lerp(0.95, 1, u) * lerp(1, 0.3, uc);
+    const fade = 1 - E.out(P(t, c0 + 0.15, c0 + 0.75));
+    O(T_.el, u * dim * fade, {
+      transform: tf(x, y, sc), filter: blur(lerp(8, 0, u) + uc * 3),
+      borderColor: glow > 0 ? `rgba(163,207,66,${(0.25 + 0.75 * glow).toFixed(3)})` : "#e5e5e5",
+      boxShadow: glow > 0 ? `0 0 0 ${(4 * glow).toFixed(2)}px rgba(163,207,66,0.22), 0 10px 28px rgba(0,0,0,0.055)` : "0 10px 28px rgba(0,0,0,0.055), 0 2px 6px rgba(0,0,0,0.03)",
+    });
+  });
+  // the points leave their tiles, line up, then drop into the score
+  const card = cardState(t);
+  flyEls.forEach((f, k) => {
+    const u = P(t, f.depart, f.arrive);
+    const [sx, sy] = G.tilePts[f.i];
+    if (t < TL.converge || u >= 1) { O(f.el, 0); return; }
+    const rx = 720 + (k - 1.5) * 116, ry = 308;
+    if (u <= 0) {
+      const m = E.inOut(P(t, TL.converge + 0.05 + k * 0.05, TL.converge + 0.8 + k * 0.05));
+      O(f.el, 1, { transform: `translate(${(lerp(sx, rx, m) - f.el.offsetWidth / 2).toFixed(2)}px, ${(lerp(sy, ry, m) - 17).toFixed(2)}px) scale(${lerp(1, 1.12, m).toFixed(3)})` });
+      return;
+    }
+    const ex = card.x + card.s * (G.score[0] + 40), ey = card.y + card.s * (G.score[1] + 22);
+    const kk = E.inOut(u);
+    const cx = (rx + ex) / 2, cy = Math.min(ry, ey) - 60;
+    const x = (1 - kk) ** 2 * rx + 2 * (1 - kk) * kk * cx + kk * kk * ex;
+    const y = (1 - kk) ** 2 * ry + 2 * (1 - kk) * kk * cy + kk * kk * ey;
+    const sc = u < 0.5 ? lerp(1.12, 1.3, E.out(u * 2)) : lerp(1.3, 0.75, E.in((u - 0.5) * 2));
+    O(f.el, 1 - E.in(P(u, 0.82, 1)), { transform: `translate(${(x - f.el.offsetWidth / 2).toFixed(2)}px, ${(y - 17).toFixed(2)}px) scale(${sc.toFixed(3)})` });
+  });
+  ladEls.forEach((el, k) => {
+    const a = TL.ladder + k * 0.08;
+    const u = E.out(P(t, a, a + 0.5));
+    O(el, u * (1 - E.in(P(t, TL.mergeOut, TL.mergeOut + 0.3))), { transform: `translateY(${lerp(18, 0, u).toFixed(2)}px)` });
+    const on = k === 5 && t > TL.ladder + 0.85;
+    if (el.__on !== on) { el.__on = on; el.classList.toggle("on", on); }
+  });
+}
+
+// ═════════════════════════ Regime card ═════════════════════════
+const MERGE_POS = { x: 720 - 1.1 * 320, y: 356, s: 1.1 }, READ_POS = { x: 1368 - 0.62 * 640, y: 30, s: 0.62 };
+const PHONE_POS = { x: PH.x + APP_CARD.x, y: 0, s: 358 / 640 }; // y set in init: band labels line up
+const morphU = (t) => E.inOut(P(t, TL.chartEnd + 0.1, TL.chartEnd + 1.1));
+function cardState(t) {
+  if (t >= TL.chartEnd) return { x: READ_POS.x, y: READ_POS.y, s: READ_POS.s }; // stays put and fades with the chart
+  const u = E.inOut(P(t, TL.chart, TL.chart + 1.0));
+  return { x: lerp(MERGE_POS.x, READ_POS.x, u), y: lerp(MERGE_POS.y, READ_POS.y, u), s: lerp(MERGE_POS.s, READ_POS.s, u) };
+}
+function setCard(score, band, date) {
+  T($("#rc-band"), band);
+  S($("#rc-band"), { color: bandInk(band) });
+  T($("#rc-score"), fmtScore(score));
+  T($("#rc-date"), date);
+  const s = clamp(score, -13.5, 13.4);
+  let k = BANDS.findIndex((b) => s < b[2]); if (k < 0) k = 6;
+  const frac = (s - BANDS[k][1]) / (BANDS[k][2] - BANDS[k][1]);
+  const seg = (G.bar - 6 * 7) / 7;
+  S($("#rc-ptr"), { left: (k * (seg + 7) + frac * seg).toFixed(2) + "px" });
+}
+function renderCard(t) {
+  const el = $("#rcard");
+  if (t < TL.cardIn - 0.05 || t > TL.chartEnd + 1.15) { O(el, 0); return; }
+  const c = cardState(t);
+  const u = E.out(P(t, TL.cardIn, TL.cardIn + 0.5));
+  const land = 0;
+  const shadowA = 1 - land;
+  O(el, u * (1 - E.out(P(t, TL.chartEnd, TL.chartEnd + 0.38))), {
+    transform: tf(c.x + (1 - u) * 16, c.y + (1 - u) * 16, c.s * lerp(0.95, 1, u)), filter: blur(lerp(6, 0, u)),
+    boxShadow: `0 26px 64px rgba(0,0,0,${(0.10 * shadowA).toFixed(3)}), 0 4px 14px rgba(0,0,0,${(0.05 * shadowA).toFixed(3)})`,
+  });
+  const tau = t - TL.chart;
+  O($("#rc-inner"), 1 - bump(tau, 0.5, 0.2));
+  O($("#rc-head"), 1);
+  if (tau < 0.5) {
+    const s = mergeScore(t);
+    setCard(s, bandOf(s), "Nov 20, 2026");
+    let pop = 0;
+    for (const f of flyEls) pop = Math.max(pop, bump(t, f.arrive + 0.08, 0.16));
+    S($("#rc-score"), { transform: `scale(${(1 + 0.07 * pop).toFixed(3)})`, color: pop > 0.05 ? `rgb(${Math.round(lerp(23, 22, pop))},${Math.round(lerp(23, 128, pop))},${Math.round(lerp(23, 61, pop))})` : "#171717" });
+  } else {
+    const r = replay(t), k = r.k;
+    const sInterp = lerp(C(k)[5], C(Math.min(N - 1, k + 1))[5], clamp(r.q - k));
+    setCard(sInterp, C(k)[6], fmtDate(C(k)[0]));
+    T($("#rc-score"), fmtScore(C(k)[5]));
+    S($("#rc-score"), { transform: "scale(1)", color: "#171717" });
+  }
+  const rp = tau >= 0.5;
+  if (el.__rp !== rp) { el.__rp = rp; el.classList.toggle("replay", rp); }
+}
+
+// ═════════════════════════ Scene 4 · Chart replay ═════════════════════════
+const N = D.candles.length;
+const C = (i) => D.candles[clamp(i, 0, N - 1)];
+const IDX = Object.fromEntries(D.candles.map((c, i) => [c[0], i]));
+const I_MAR = IDX["2026-03-30"], I_JUN = IDX["2026-06-15"], I_OCT = IDX["2026-10-06"], I_NOV = IDX["2026-11-20"];
+function monotone(xs, ys) {
+  const n = xs.length, d = [], m = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const k = 3 / Math.sqrt(s); m[i] = k * a * d[i]; m[i + 1] = k * b * d[i]; }
+  }
+  return (x) => {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    let i = 0; while (x > xs[i + 1]) i++;
+    if (ys[i] === ys[i + 1]) return ys[i]; // exact on pauses (209.999… would show the day before)
+    const h = xs[i + 1] - xs[i], u = (x - xs[i]) / h;
+    return (2 * u ** 3 - 3 * u ** 2 + 1) * ys[i] + (u ** 3 - 2 * u ** 2 + u) * h * m[i] + (-2 * u ** 3 + 3 * u ** 2) * ys[i + 1] + (u ** 3 - u ** 2) * h * m[i + 1];
+  };
+}
+// τ (seconds into the replay) → p (candles done). Slow into each low, pause on the calls.
+const KF = [[0, 0], [1.05, 0], [4.0, 38], [5.4, I_MAR + 1], [6.6, I_MAR + 1], [11.0, I_OCT + 1], [11.5, I_OCT + 1], [13.6, I_NOV - 1], [14.7, I_NOV + 1], [15.9, I_NOV + 1], [16.7, N], [40, N]];
+const playhead = monotone(KF.map((k) => k[0]), KF.map((k) => k[1]));
+function replay(t) {
+  const p = clamp(Math.round(playhead(t - TL.chart) * 1e6) / 1e6, 0, N);
+  const q = p - 1;
+  return { p, q, k: clamp(Math.floor(q), 0, N - 1) };
+}
+function timeAt(x) { for (let s = 0; s < 30; s += 1 / 240) if (playhead(s) >= x) return TL.chart + s; return Infinity; }
+const CUM_HI = []; { let m = -Infinity; for (let i = 0; i < N; i++) { m = Math.max(m, C(i)[2]); CUM_HI.push(m); } }
+function forming(i, f) {
+  const [, o, h, l, c] = C(i);
+  const pts = c >= o ? [[0, o], [0.3, l], [0.72, h], [1, c]] : [[0, o], [0.3, h], [0.72, l], [1, c]];
+  let cur = o, hi = o, lo = o;
+  for (let k = 1; k < pts.length; k++) {
+    const [f0, v0] = pts[k - 1], [f1, v1] = pts[k];
+    if (f >= f1) { cur = v1; hi = Math.max(hi, v1); lo = Math.min(lo, v1); continue; }
+    if (f > f0) { cur = v0 + (v1 - v0) * (f - f0) / (f1 - f0); hi = Math.max(hi, cur); lo = Math.min(lo, cur); }
+    break;
+  }
+  return { o, cur, hi, lo };
+}
+const CH = { x0: 72, x1: 1290, py0: 300, py1: 716, ry0: 846, ry1: 996 };
+const softplus = (x, k) => k * Math.log1p(Math.exp(x / k));
+function geom(p) {
+  const i0 = -1.5, i1 = 56 + softplus(p + 12 - 56, 6);
+  const k = Math.floor(p);
+  let hi = k > 0 ? CUM_HI[Math.min(k, N) - 1] : C(0)[1];
+  if (k < N) hi = Math.max(hi, forming(k, p - k).hi);
+  const vmin = 20300, vmax = Math.max(24300, hi * 1.026);
+  const X = (i) => CH.x0 + (i - i0) / (i1 - i0) * (CH.x1 - CH.x0);
+  const Y = (v) => CH.py1 - (v - vmin) / (vmax - vmin) * (CH.py1 - CH.py0);
+  const RY = (s) => CH.ry0 + (10 - clamp(s, -10, 10)) / 20 * (CH.ry1 - CH.ry0);
+  return { vmin, vmax, X, Y, RY, sp: (CH.x1 - CH.x0) / (i1 - i0) };
+}
+const cv = $("#chart"), ctx = cv.getContext("2d");
+const TOASTS = [
+  { i: IDX["2026-03-13"], t: "Regime: Cautious Buy (+1.8)" },
+  { i: IDX["2026-03-27"], t: "Regime: Buy (+6.7)" },
+  { i: IDX["2026-10-22"], t: "Regime: Cautious Buy (+2.0)" },
+  { i: IDX["2026-11-19"], t: "Regime: Buy (+4.7)" },
+];
+TOASTS.forEach((x) => (x.at = timeAt(x.i + 1)));
+const CALL = { mar: timeAt(I_MAR + 1), jun: timeAt(I_JUN + 1), oct: timeAt(I_OCT + 1), nov: timeAt(I_NOV + 1) };
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function drawChart(t, alpha) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, 1440, 1080);
+  if (alpha <= 0) return null;
+  const { p } = replay(t);
+  const g = geom(p);
+  const { X, Y, RY } = g;
+  ctx.globalAlpha = alpha;
+  ctx.textBaseline = "middle";
+  // price grid
+  const step = g.vmax - g.vmin > 6000 ? 2000 : 1000;
+  ctx.font = "500 13px Inter";
+  for (let v = Math.ceil(g.vmin / step) * step; v <= g.vmax; v += step) {
+    const y = Math.round(Y(v)) + 0.5;
+    ctx.strokeStyle = "#efefef"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(CH.x0, y); ctx.lineTo(CH.x1, y); ctx.stroke();
+    ctx.fillStyle = "#a3a3a3"; ctx.textAlign = "left";
+    ctx.fillText(v.toLocaleString("en-US"), CH.x1 + 12, y);
+  }
+  ctx.save(); ctx.fillStyle = "#737373"; ctx.textAlign = "left"; ctx.font = "700 13px Inter"; ctx.letterSpacing = "1.6px";
+  ctx.fillText("NASDAQ", CH.x0, CH.py0 - 22); ctx.fillText("REGIME", CH.x0, CH.ry0 - 18); ctx.restore();
+  // candles
+  const bw = Math.max(1.6, Math.min(15, g.sp * 0.62));
+  const kfull = Math.min(Math.floor(p), N);
+  const drawCandle = (i, o, hi, lo, c) => {
+    const x = X(i), col = c >= o ? "#16803d" : "#dc4444";
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Math.max(1, Math.min(1.6, bw * 0.2));
+    ctx.beginPath(); ctx.moveTo(x, Y(hi)); ctx.lineTo(x, Y(lo)); ctx.stroke();
+    const y1 = Y(Math.max(o, c)), y2 = Y(Math.min(o, c));
+    ctx.fillRect(x - bw / 2, y1, bw, Math.max(1.2, y2 - y1));
+  };
+  for (let i = 0; i < kfull; i++) { const [, o, h, l, c] = C(i); drawCandle(i, o, h, l, c); }
+  let lastPx = null;
+  if (kfull < N && p > 0) {
+    const fp = forming(kfull, p - kfull);
+    drawCandle(kfull, fp.o, fp.hi, fp.lo, fp.cur);
+    lastPx = { i: kfull, v: fp.cur };
+  } else if (kfull > 0) lastPx = { i: kfull - 1, v: C(kfull - 1)[4] };
+  // Mar 30 low → Oct 6 high
+  const gainA = alpha * E.out(P(t, CALL.oct + 0.05, CALL.oct + 0.5));
+  if (gainA > 0) {
+    ctx.save(); ctx.globalAlpha = gainA;
+    const xa = X(I_MAR), ylo = Y(C(I_MAR)[3]) - 12, yhi = Y(C(I_OCT)[2]);
+    ctx.strokeStyle = "#16803d"; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(xa, yhi); ctx.lineTo(X(I_OCT) - 8, yhi); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(xa, ylo); ctx.lineTo(xa, yhi + 4); ctx.stroke();
+    ctx.fillStyle = "#16803d"; ctx.beginPath(); ctx.moveTo(xa, yhi - 2); ctx.lineTo(xa - 7, yhi + 11); ctx.lineTo(xa + 7, yhi + 11); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(X(I_OCT), yhi, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  // last price tag
+  if (lastPx) {
+    const y = Y(lastPx.v);
+    ctx.save(); ctx.strokeStyle = "#171717"; ctx.globalAlpha = alpha * 0.5; ctx.setLineDash([3, 4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X(lastPx.i) + bw, y); ctx.lineTo(CH.x1, y); ctx.stroke(); ctx.restore();
+    const label = fmtPx(lastPx.v);
+    ctx.font = "700 13px Inter";
+    const w = ctx.measureText(label).width + 14;
+    ctx.fillStyle = "#171717"; roundRect(CH.x1 + 6, y - 12, w, 24, 6); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.fillText(label, CH.x1 + 13, y + 0.5);
+  }
+  // regime panel
+  const zones = [[10, 4.5, "rgba(147,189,64,0.13)"], [4.5, 1.5, "rgba(196,216,141,0.16)"], [-1.5, -4.5, "rgba(222,176,168,0.20)"], [-4.5, -10, "rgba(217,102,102,0.13)"]];
+  for (const [a, b, col] of zones) { ctx.fillStyle = col; ctx.fillRect(CH.x0, RY(a), CH.x1 - CH.x0, RY(b) - RY(a)); }
+  ctx.strokeStyle = "#d4d4d4"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(CH.x0, Math.round(RY(0)) + 0.5); ctx.lineTo(CH.x1, Math.round(RY(0)) + 0.5); ctx.stroke();
+  ctx.font = "700 15px Inter"; ctx.textAlign = "left";
+  ctx.fillStyle = "#466a12"; ctx.fillText("Buy", CH.x1 + 12, RY(6.75));
+  ctx.fillStyle = "#c94444"; ctx.fillText("Risk", CH.x1 + 12, RY(-6.75));
+  const q = p - 1;
+  if (q >= 0) {
+    const pts = [];
+    for (let i = 0; i <= Math.min(Math.floor(q), N - 1); i++) pts.push([X(i), RY(C(i)[5])]);
+    const fq = q - Math.floor(q);
+    if (Math.floor(q) < N - 1 && fq > 0) { const i = Math.floor(q); pts.push([X(i + fq), RY(lerp(C(i)[5], C(i + 1)[5], fq))]); }
+    if (pts.length) {
+      const y0 = RY(0);
+      const area = new Path2D(); area.moveTo(pts[0][0], y0); pts.forEach(([x, y]) => area.lineTo(x, y)); area.lineTo(pts[pts.length - 1][0], y0); area.closePath();
+      const line = new Path2D(); pts.forEach(([x, y], k) => (k ? line.lineTo(x, y) : line.moveTo(x, y)));
+      for (const [above, fill, stroke] of [[true, "rgba(22,128,61,0.20)", "#16803d"], [false, "rgba(220,68,68,0.18)", "#dc4444"]]) {
+        ctx.save(); ctx.beginPath();
+        if (above) ctx.rect(0, 0, 1440, y0); else ctx.rect(0, y0, 1440, 1080 - y0);
+        ctx.clip(); ctx.fillStyle = fill; ctx.fill(area);
+        ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke(line); ctx.restore();
+      }
+      const [lx, ly] = pts[pts.length - 1];
+      ctx.fillStyle = "#171717"; ctx.beginPath(); ctx.arc(lx, ly, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  // month ticks
+  ctx.font = "500 13px Inter"; ctx.fillStyle = "#a3a3a3"; ctx.textAlign = "center";
+  let prevM = C(0)[0].slice(5, 7);
+  for (let i = 1; i < N; i++) {
+    const m = C(i)[0].slice(5, 7);
+    if (m !== prevM) {
+      const x = X(i);
+      if (x > CH.x0 + 10 && x < CH.x1 - 10 && i <= Math.max(p, 1) + 2) {
+        ctx.fillText(MONTHS[+m - 1], x, CH.ry1 + 20);
+        ctx.strokeStyle = "#e5e5e5"; ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, CH.ry1); ctx.lineTo(Math.round(x) + 0.5, CH.ry1 + 6); ctx.stroke();
+      }
+      prevM = m;
+    }
+  }
+  ctx.globalAlpha = 1;
+  return g;
+}
+function place(el, x, y, op, extra) { O(el, op, Object.assign({ transform: `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)` }, extra || {})); }
+const CALLOUTS = ["#co-mar", "#co-jun", "#co-nov", "#gain", "#toast", "#ring-mar", "#ring-jun", "#ring-nov"];
+function renderChart(t) {
+  const L = $("#s-chart");
+  const tau = t - TL.chart;
+  if (tau < 0 || t > TL.chartEnd + 0.6) { O(L, 0); drawChart(t, 0); return; }
+  // fades away as the regime card flies into the phone
+  const out = E.out(P(t, TL.chartEnd, TL.chartEnd + 0.38));
+  O(L, 1 - out, { transform: out > 0 ? `scale(${lerp(1, 0.97, out).toFixed(4)})` : "none", transformOrigin: "720px 540px" });
+  const alpha = E.out(P(tau, 0.25, 0.95));
+  const g = drawChart(t, alpha);
+  title(t, $("#ch-title"), TL.chart + 0.35, 999);
+  O($("#ch-foot"), E.out(P(tau, 0.8, 1.4)) * 0.95);
+  if (!g) { CALLOUTS.forEach((id) => O($(id), 0)); return; }
+  const { X, Y, RY } = g;
+  const show = (at) => E.out(P(t, at + 0.02, at + 0.42));
+  const ring = (id, at, x, y) => { const u = P(t, at, at + 0.9); O($(id), (1 - u) * 0.9 * (u > 0 ? 1 : 0), { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${lerp(0.6, 2.2, E.out(u)).toFixed(3)})` }); };
+  { const x = X(I_MAR), y = Y(C(I_MAR)[3]); place($("#co-mar"), x - $("#co-mar").offsetWidth / 2 + 24, y + 22, show(CALL.mar)); ring("#ring-mar", CALL.mar, x, y); }
+  { const x = X(I_JUN), y = RY(C(I_JUN)[5]); place($("#co-jun"), x - $("#co-jun").offsetWidth / 2, RY(9.6), show(CALL.jun)); ring("#ring-jun", CALL.jun, x, y); }
+  place($("#gain"), X(I_MAR) - $("#gain").offsetWidth - 18, Y(C(I_OCT)[2]) + 40, E.out(P(t, CALL.oct + 0.1, CALL.oct + 0.55)));
+  { const x = X(I_NOV), y = Y(C(I_NOV)[3]); place($("#co-nov"), x - $("#co-nov").offsetWidth / 2 - 30, y + 22, show(CALL.nov)); ring("#ring-nov", CALL.nov, x, y); }
+  // push-style toasts, one at a time
+  let cur = null;
+  for (const x of TOASTS) if (t >= x.at) cur = x;
+  const el = $("#toast");
+  if (!cur) O(el, 0);
+  else {
+    const next = TOASTS[TOASTS.indexOf(cur) + 1];
+    const endAt = Math.min(cur.at + 1.7, next ? next.at : Infinity);
+    const u = E.outBack(P(t, cur.at, cur.at + 0.4));
+    const v = E.in(P(t, endAt - 0.25, endAt));
+    T($("#toast-t"), cur.t);
+    O(el, Math.min(1, P(t, cur.at, cur.at + 0.15)) * (1 - v) * alpha, { transform: `translateY(${(lerp(-30, 0, u) - 18 * v).toFixed(2)}px)` });
+  }
+}
+
+// ═════════════════════════ Scenes 5–8 · Phone ═════════════════════════
+function renderMain(t) { O($("#main"), t > TL.chartEnd + 0.6 ? 0 : 1); }
+const TAPS = [];
+function renderTouch(t) {
+  const el = $("#touch");
+  let tap = null;
+  for (const k of TAPS) if (t >= k[0] - 0.32 && t <= k[0] + 0.38) tap = k;
+  if (!tap) { O(el, 0); return; }
+  const [tp, x, y] = tap;
+  const a = E.out(P(t, tp - 0.32, tp - 0.12));
+  const press = bump(t, tp, 0.12);
+  const rel = E.in(P(t, tp + 0.08, tp + 0.38));
+  O(el, a * (1 - rel), { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${(lerp(1.3, 1, a) - 0.18 * press + 0.25 * rel).toFixed(3)})` });
+}
+function pageScroll(k, t) {
+  if (k === 0) return t < TL.tour || t >= TL.launch ? 0 : lerp(0, 150, E.inOut(P(t, TOUR[0][1] + 0.3, TOUR[0][2] - 0.1))); // the launched app opens at the top
+  if (k === 1) return lerp(0, 150, E.inOut(P(t, TOUR[1][2] - 0.7, TOUR[1][2] - 0.05)));
+  if (k === 2) return lerp(0, 130, E.inOut(P(t, TOUR[2][1] + 0.25, TOUR[2][2] - 0.05)));
+  const a = TOUR[3][1];
+  // Futures & Crypto → tap BTC → its chart (short hold) → the Bitcoin headlines under it
+  return lerp(lerp(NEWS_S0, NEWS_S1, E.inOut(P(t, a + 0.65, a + 1.25))), NEWS_S2, E.inOut(P(t, a + 1.75, a + 2.35)));
+}
+function renderApp(t) {
+  pageEls.forEach((p) => O(p.el, 0));
+  const inTour = t >= TL.tour && t < TL.launch; // News stays up until the installed app opens
+  const showPage = (k, op) => { const p = pageEls[k]; O(p.el, op, { zIndex: String(1 + k) }); S(p.img, { transform: `translateY(${(-pageScroll(k, t)).toFixed(2)}px)` }); };
+  showPage(0, 1);
+  let x = 0;
+  if (inTour) {
+    for (const [k, a] of TOUR.slice(1)) {
+      x = lerp(x, k, E.inOut(P(t, a - 0.1, a + 0.1)));
+      if (t >= a) showPage(k, E.out(P(t, a, a + 0.18)));
+    }
+  }
+  setTabs(tabbar, x);
+  // Special Focus spotlight on the Watchlist page
+  const [, w0, w1] = TOUR[1];
+  const spot = inTour ? win(t, w0 + 0.35, w1 - 0.75, 0.35, 0.3) : 0;
+  const sy = 54 + WL_FOCUS[1] - pageScroll(1, t);
+  O($("#spot"), spot, { transform: `translate(${WL_FOCUS[0]}px, ${sy.toFixed(2)}px)`, width: WL_FOCUS[2] + "px", height: WL_FOCUS[3] + "px",
+    boxShadow: `0 0 0 ${(2.5 + 3 * bump(t, w0 + 1.0, 0.35)).toFixed(2)}px #f59e0b, 0 0 0 9999px rgba(20,20,20,0.46)` });
+  const lu = E.outBack(P(t, w0 + 0.55, w0 + 0.95)) * (1 - E.in(P(t, w1 - 1.0, w1 - 0.75)));
+  O($("#lift"), spot > 0.02 ? 1 : 0, { transform: `translate(${WL_ITEM[0]}px, ${(54 + WL_ITEM[1] - pageScroll(1, t)).toFixed(2)}px) scale(${(1 + 0.06 * lu).toFixed(4)})`,
+    boxShadow: `0 ${(10 * lu).toFixed(1)}px ${(26 * lu).toFixed(1)}px rgba(180,83,9,${(0.28 * lu).toFixed(3)})` });
+  // settings dialog + iOS permission prompt
+  const dlgOp = win(t, TL.dlgIn, TL.dlgOut + 0.25, 0.25, 0.25);
+  O($("#ph-dim"), dlgOp);
+  O($("#dlg"), dlgOp, { transform: `scale(${lerp(0.94, 1, E.out(P(t, TL.dlgIn, TL.dlgIn + 0.3))).toFixed(4)})` });
+  const on = t >= TL.alertsOn;
+  O($("#dlg-s-off"), on ? 0 : 1); O($("#dlg-s-on"), on ? 1 : 0);
+  O($("#dlg-b-off"), on ? 0 : 1); O($("#dlg-b-on"), on ? 1 : 0);
+  S($("#dlg-toggle"), { background: on ? "#fff" : "#171717", borderColor: on ? "#d4d4d4" : "#171717", transform: `scale(${(1 - 0.06 * bump(t, TL.tapTurnOn, 0.12)).toFixed(3)})` });
+  S($("#dlg-test"), { opacity: on ? "1" : "0.45" });
+  const iosOp = win(t, TL.iosIn, TL.tapAllow + 0.3, 0.22, 0.2);
+  O($("#ios-dim"), iosOp);
+  O($("#ios-alert"), iosOp, { transform: `scale(${lerp(1.15, 1, E.out(P(t, TL.iosIn, TL.iosIn + 0.28))).toFixed(4)})` });
+  $("#ios-allow").classList.toggle("press", Math.abs(t - TL.tapAllow) < 0.12);
+}
+function renderPhone(t) {
+  const L = $("#s-phone");
+  if (t < TL.chartEnd + 0.3 || t > TL.end + 0.9) { O(L, 0); return; }
+  O(L, 1);
+  // the phone gathers around the landing regime card, and later leaves into the end card
+  const pin = E.out(P(t, TL.chartEnd + 0.3, TL.chartEnd + 0.95));
+  const pout = E.in(P(t, TL.end, TL.end + 0.6));
+  const zoom = 1 + 0.1 * (E.inOut(P(t, TL.alerts + 0.3, TL.alerts + 0.9)) - E.inOut(P(t, TL.tour - 0.45, TL.tour + 0.15)));
+  O($("#phone"), pin * (1 - pout), { transform: `scale(${(lerp(1.05, 1, pin) * lerp(1, 0.94, pout) * zoom).toFixed(4)})` });
+  // right-hand copy
+  const rt = (id, a, b) => {
+    const u = E.out(P(t, a, a + 0.55)), v = E.in(P(t, b - 0.3, b));
+    O($(id), u * (1 - v), { transform: `translateY(${(lerp(22, 0, u) - 14 * v).toFixed(2)}px)`, filter: blur(lerp(6, 0, u) + 4 * v) });
+  };
+  rt("#rt-new", TL.newTxt[0], TL.newTxt[1]);
+  rt("#rt-alerts", TL.alerts + 0.15, TL.tour);
+  rt("#rt-tour", TL.tour + 0.1, TL.install);
+  rt("#rt-install", TL.install + 0.1, TL.end + 0.3);
+  // the big notification arrives with the banner on the phone
+  const nu = P(t, TL.bannerIn + 0.05, TL.bannerIn + 0.55);
+  O($("#bignote"), E.out(P(t, TL.bannerIn + 0.05, TL.bannerIn + 0.2)), {
+    transform: `translateY(${lerp(-26, 0, E.outBack(nu)).toFixed(2)}px) scale(${lerp(0.94, 1, E.outBack(nu)).toFixed(4)})`,
+    boxShadow: `0 18px 44px rgba(0,0,0,0.12), 0 0 0 ${(4 * bump(t, TL.bannerIn + 0.75, 0.6)).toFixed(2)}px rgba(163,207,66,0.5)` });
+  // page tour list
+  let ax = 0;
+  for (const [k, a] of TOUR.slice(1)) ax = lerp(ax, k, E.inOut(P(t, a - 0.12, a + 0.12)));
+  tourEls.forEach((it, k) => {
+    const on = 1 - clamp(Math.abs(ax - k));
+    O(it.el, lerp(0.3, 1, on));
+    S(it.ic, { background: on > 0.5 ? (k === 1 ? "#fdf3e7" : "#f2f7e5") : "#f4f4f4" });
+    S(it.svg, { stroke: on > 0.5 ? (k === 1 ? "#b45309" : "#466a12") : "#737373" });
+  });
+  S(tourBar, { transform: `translateY(${(ax * 108).toFixed(2)}px)`, background: ax > 0.5 && ax < 1.5 ? "#f59e0b" : "#a3cf42" });
+  // install steps
+  const stepAt = [TL.install, TL.tapShare - 0.1, TL.tapAddHome - 0.1, TL.tapKiwi - 0.1];
+  stepEls.forEach((s, k) => {
+    const on = t >= stepAt[k] && (k === 3 || t < stepAt[k + 1]);
+    const done = t >= (stepAt[k + 1] ?? Infinity);
+    s.classList.toggle("on", on);
+    O(s, on ? 1 : done ? 0.55 : 0.35);
+  });
+
+  // ── what the phone screen shows ──
+  const launchU = E.inOut(P(t, TL.launch, TL.launch + 0.5));
+  const app = $("#ph-app");
+  if (t >= TL.launch) {
+    const sc = lerp(62 / 390, 1, launchU);
+    const cx = lerp(G.kiwi[0], 195, launchU), cy = lerp(G.kiwi[1], 422, launchU);
+    const inset = lerp((844 - 390) / 2, 0, launchU);
+    O(app, E.out(P(t, TL.launch, TL.launch + 0.1)), {
+      transformOrigin: "0 0", transform: launchU < 1 ? `translate(${(cx - 195 * sc).toFixed(2)}px, ${(cy - 422 * sc).toFixed(2)}px) scale(${sc.toFixed(4)})` : "none",
+      clipPath: launchU < 1 ? `inset(${inset.toFixed(2)}px 0px ${inset.toFixed(2)}px 0px round ${lerp(15 / (62 / 390), 56, launchU).toFixed(2)}px)` : "none", zIndex: "38" });
+    renderApp(t);
+  } else if (t < TL.install + 0.4) {
+    O(app, 1, { clipPath: "none", transform: "none", zIndex: "1" });
+    renderApp(t);
+  } else O(app, 0);
+  // Safari: the same News page, so no cut; its toolbar slides up and lifts the tab bar
+  const sfOp = t < TL.install ? 0 : 1 - E.in(P(t, TL.homeIn + 0.2, TL.homeIn + 0.4));
+  O($("#ph-safari"), sfOp, { zIndex: "2" });
+  if (sfOp > 0) {
+    setTabs(sfTab, 3);
+    const cu = E.inOut(P(t, TL.install + 0.05, TL.install + 0.6));
+    S($("#sf-bar"), { transform: `translateY(${lerp(140, 0, cu).toFixed(2)}px)` });
+    S($("#sf-tab"), { top: lerp(752, 646, cu).toFixed(2) + "px", height: lerp(92, 58, cu).toFixed(2) + "px" });
+    S($("#sf-page"), { height: lerp(790, 650, cu).toFixed(2) + "px" });
+    const su = E.out(P(t, TL.shareIn, TL.shareIn + 0.4));
+    const shareOut = E.in(P(t, TL.homeIn - 0.1, TL.homeIn + 0.2));
+    O($("#sh-dim"), su * (1 - shareOut));
+    O($("#sh-share"), su > 0 ? 1 : 0, { transform: `translateY(${lerp(560, 0, su).toFixed(2)}px)` });
+    $("#sh-addhome").classList.toggle("hl", t > TL.tapAddHome - 0.05 && t < TL.addIn + 0.3);
+    const au = E.out(P(t, TL.addIn, TL.addIn + 0.4));
+    O($("#sh-add"), au > 0 ? 1 : 0, { transform: `translateY(${lerp(800, 0, au).toFixed(2)}px)` });
+    S($("#add-btn"), { opacity: Math.abs(t - TL.tapAdd) < 0.1 ? "0.4" : "1" });
+  }
+  // Home Screen
+  const homeOp = t >= TL.homeIn ? E.out(P(t, TL.homeIn, TL.homeIn + 0.35)) * (1 - E.in(P(t, TL.launch + 0.15, TL.launch + 0.5))) : 0;
+  O($("#ph-home"), homeOp, { transform: `scale(${(lerp(1.06, 1, E.out(P(t, TL.homeIn, TL.homeIn + 0.45))) * lerp(1, 1.12, launchU)).toFixed(4)})` });
+  const kp = P(t, TL.kiwiPop, TL.kiwiPop + 0.5);
+  O($("#hm-kiwi"), E.out(P(t, TL.kiwiPop, TL.kiwiPop + 0.2)), { transform: `scale(${lerp(0.2, 1, E.outBack(kp)).toFixed(4)})` });
+  O($("#hm-kiwi-lbl"), E.out(P(t, TL.kiwiPop + 0.2, TL.kiwiPop + 0.5)));
+  S($("#homebar"), { background: homeOp > 0.5 && t < TL.launch + 0.3 ? "#fff" : "#111" });
+  // notification banner
+  const bu = E.outBack(P(t, TL.bannerIn, TL.bannerIn + 0.5));
+  const bo = E.in(P(t, TL.bannerOut, TL.bannerOut + 0.32));
+  O($("#banner"), t >= TL.bannerIn && t <= TL.bannerOut + 0.35 ? 1 : 0, { transform: `translateY(${(lerp(-110, 58, bu) - 175 * bo).toFixed(2)}px)` });
+  renderTouch(t);
+}
+
+// ═════════════════════════ Frame ═════════════════════════
+function render(t) {
+  renderIntro(t);
+  renderIndicators(t);
+  renderCard(t);
+  renderChart(t);
+  renderMain(t);
+  renderPhone(t);
+  renderEnd(t);
+}
+
+async function init() {
+  await document.fonts.load("800 100px Inter");
+  await document.fonts.load("400 20px Inter");
+  await document.fonts.ready;
+  await Promise.all([...document.images].map((im) => (im.complete ? Promise.resolve() : new Promise((r) => { im.onload = im.onerror = r; })).then(() => im.decode().catch(() => {}))));
+  measure();
+  const dTop = (844 - G.dlgH) / 2 - 20;
+  S($("#dlg"), { top: dTop.toFixed(1) + "px" });
+  G.turnOn = centerIn($("#dlg-toggle"), $("#ph-screen")); G.close = centerIn($("#dlg-x"), $("#ph-screen"));
+  // the card lands so its band label sits on the app's own band label
+  PHONE_POS.y = PH.y + 54 + APP_CARD.band - PHONE_POS.s * G.bandTop;
+  TAPS.push(
+    [TL.tapAlerts, 310.8, 54 + 221.6], [TL.tapTurnOn, ...G.turnOn], [TL.tapAllow, ...G.allow], [TL.tapClose, ...G.close],
+    ...TOUR.slice(1).map(([k, a]) => [a - 0.15, 4 + 76.4 * k + 38.2, 844 - 92 + 29]),
+    [TOUR[3][1] + 0.5, 195, 54 + NEWS_BTC[1] + NEWS_BTC[3] / 2 - NEWS_S0],
+    [TL.tapShare, ...G.share], [TL.tapAddHome, ...G.addHome], [TL.tapAdd, ...G.add], [TL.tapKiwi, ...G.kiwi]);
+  TAPS.sort((a, b) => a[0] - b[0]);
+  window.__render = (t) => { render(t); return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); };
+  window.__duration = TL.dur;
+  window.__ready = true;
+  const qs = new URLSearchParams(location.search);
+  if (qs.has("render")) { document.body.classList.add("render"); render(+(qs.get("t") || 0)); return; }
+  const stage = $("#stage");
+  const fit = () => { const k = Math.min(innerWidth / 1440, (innerHeight - 46) / 1080); stage.style.transform = `scale(${k})`; stage.style.left = ((innerWidth - 1440 * k) / 2) + "px"; };
+  addEventListener("resize", fit); fit();
+  let t = +(qs.get("t") || 0), playing = false, last = 0;
+  const scrub = $("#scrub"), lab = $("#tlabel"), btn = $("#play");
+  scrub.max = TL.dur;
+  const show = () => { render(t); scrub.value = t; lab.textContent = t.toFixed(2) + " s"; };
+  const loop = (now) => { if (!playing) return; t += (now - last) / 1000; last = now; if (t >= TL.dur) { t = TL.dur; playing = false; btn.textContent = "Play"; } show(); requestAnimationFrame(loop); };
+  const toggle = () => { playing = !playing; btn.textContent = playing ? "Pause" : "Play"; if (playing) { if (t >= TL.dur) t = 0; last = performance.now(); requestAnimationFrame(loop); } };
+  btn.onclick = toggle;
+  scrub.oninput = () => { t = +scrub.value; show(); };
+  addEventListener("keydown", (e) => { if (e.code === "Space") { e.preventDefault(); toggle(); } if (e.code === "ArrowRight") { t = Math.min(TL.dur, t + 1 / 30); show(); } if (e.code === "ArrowLeft") { t = Math.max(0, t - 1 / 30); show(); } });
+  show();
+}
+init();
+})();
+</script>
+</body>
+</html>
