@@ -6158,9 +6158,14 @@
 
     <!-- ── Google sign-in (Supabase) ─────────────────────────────────────────
          Only active when SUPABASE_URL / SUPABASE_ANON_KEY are set above.
-         PKCE flow on purpose: the tabs use #hash routing, and the implicit
-         flow would put #access_token=… into the hash. Exposes window.ptAuth,
-         which the Watchlist tab uses to pick its data source. -->
+         On poortrader.com, "Sign in" goes to Google directly and comes back
+         to /auth/callback, so Google's page names poortrader.com instead of
+         the Supabase project's address; Supabase then starts the session
+         from Google's ID token (signInWithIdToken). Anywhere else, or if that
+         fails, it falls back to Supabase's own redirect (PKCE: the tabs use
+         #hash routing, and the implicit flow would put #access_token=… into
+         the hash). Exposes window.ptAuth, which the Watchlist tab uses to
+         pick its data source. -->
     <script>
     (() => {
       const SB_URL = String(window.SUPABASE_URL || "").trim();
@@ -6169,7 +6174,16 @@
       const SB_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js";
       const SB_SRI = "sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK";
       const RETURN_TAB_KEY = "pt.returnTab";
-      const st = { client: null, session: null, admin: false, isReady: false };
+      // Direct Google sign-in. The client ID is public (it appears in every
+      // Google sign-in address); the client secret stays with Supabase.
+      // https://poortrader.com/auth/callback must be an authorized redirect
+      // URI of this client in Google Cloud.
+      const GOOGLE_CLIENT_ID = "1006095352824-2j59355d3kl0h9aa4c01abqdlivqu152.apps.googleusercontent.com";
+      const DIRECT_ORIGIN = "https://poortrader.com";
+      const DIRECT_KEY = "kb.gsi";               // this attempt: state, raw nonce, tab
+      const DIRECT_RESULT_KEY = "kb.gsi.result"; // written by /auth/callback
+      const DIRECT_OFF_KEY = "kb.gsi.off";       // after a failure: old way for a day
+      const st = { client: null, session: null, admin: false, isReady: false, directOff: false };
       let markReady;
       const ready = new Promise((resolve) => { markReady = () => { st.isReady = true; resolve(); }; });
       const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -6289,12 +6303,76 @@
 
       async function signIn() {
         if (!st.client) return;
-        try { sessionStorage.setItem(RETURN_TAB_KEY, (location.hash || "#prediction").slice(1)); } catch (e) {}
+        const tab = (location.hash || "#prediction").slice(1);
+        if (useDirect()) {
+          try { await startDirect(tab); return; }
+          catch (e) { console.warn("Direct Google sign-in unavailable:", e); }
+        }
+        try { sessionStorage.setItem(RETURN_TAB_KEY, tab); } catch (e) {}
         const { error } = await st.client.auth.signInWithOAuth({
           provider: "google",
           options: { redirectTo: location.origin + "/" },
         });
         if (error) alert("Sign-in failed: " + error.message);
+      }
+
+      function useDirect() {
+        if (st.directOff || location.origin !== DIRECT_ORIGIN || !(window.crypto && crypto.subtle)) return false;
+        try {
+          const off = Number(localStorage.getItem(DIRECT_OFF_KEY) || 0);
+          return !(off && Date.now() - off < 24 * 3600 * 1000);
+        } catch (e) { return false; }
+      }
+
+      const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+      // To Google with an OpenID Connect request for an ID token. Google
+      // puts the SHA-256 of the nonce into the token; Supabase checks it
+      // against the raw nonce, so a token only works for this attempt.
+      async function startDirect(tab) {
+        const nonce = hex(crypto.getRandomValues(new Uint8Array(32)));
+        const state = hex(crypto.getRandomValues(new Uint8Array(16)));
+        const hashed = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(nonce))));
+        localStorage.setItem(DIRECT_KEY, JSON.stringify({ state, nonce, tab: /^[a-z]+$/.test(tab) ? tab : "prediction", at: Date.now() }));
+        const params = {
+          client_id: GOOGLE_CLIENT_ID,
+          redirect_uri: location.origin + "/auth/callback",
+          response_type: "id_token",
+          scope: "openid email profile",
+          nonce: hashed,
+          state,
+        };
+        // Spaces must be %20: with URLSearchParams' "+" in the scope, Google
+        // refused every request with "redirect_uri_mismatch" (2026-11-27).
+        const qs = Object.entries(params).map(([k, v]) => k + "=" + encodeURIComponent(v)).join("&");
+        location.assign("https://accounts.google.com/o/oauth2/v2/auth?" + qs);
+      }
+
+      // Back from Google through /auth/callback: check the state, then let
+      // Supabase verify the token and start the session. Returns
+      // { failure } to show, or { fallback: true } when Supabase refused the
+      // token, in which case the caller signs in the old way instead.
+      async function finishDirect() {
+        let result = null, pending = null;
+        try { result = JSON.parse(localStorage.getItem(DIRECT_RESULT_KEY) || "null"); } catch (e) {}
+        if (!result) return {};   // no answer from Google yet: leave the attempt alone
+        try {
+          pending = JSON.parse(localStorage.getItem(DIRECT_KEY) || "null");
+          localStorage.removeItem(DIRECT_RESULT_KEY);
+          localStorage.removeItem(DIRECT_KEY);
+        } catch (e) {}
+        if (result.error) return result.error === "access_denied" ? {} : { failure: result.error };
+        if (!pending || !result.idToken || result.state !== pending.state || Date.now() - pending.at > 15 * 60 * 1000) {
+          return { failure: "This sign-in expired. Please try again." };
+        }
+        const { error } = await st.client.auth.signInWithIdToken({
+          provider: "google", token: result.idToken, nonce: pending.nonce,
+        });
+        if (!error) return {};
+        console.warn("Sign-in through poortrader.com failed; using Supabase's page instead:", error.message);
+        st.directOff = true;
+        try { localStorage.setItem(DIRECT_OFF_KEY, String(Date.now())); } catch (e) {}
+        return { fallback: true };
       }
 
       async function signOut() {
@@ -6332,9 +6410,11 @@
         st.client = window.supabase.createClient(SB_URL, SB_KEY, {
           auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true, autoRefreshToken: true },
         });
+        const direct = await finishDirect();
+        if (direct.fallback) { await signIn(); return; }      // navigates to Supabase's sign-in
         const { data } = await st.client.auth.getSession();   // also finishes the ?code= exchange
         st.session = data.session;
-        const failure = cleanAuthParams();
+        const failure = cleanAuthParams() || direct.failure;
         await refreshAdmin();
         renderAuthUI(failure);
         // If this finished after the 8s fallback, the watchlist already

@@ -314,18 +314,43 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 - 手机：固定列两边留 14px。
 - 修复了线上原有的问题：手机上表格上下滚动时，第一行盖住表头 "Name"。原因是桌面的表头规则（`:is(.stocks-card, .assets-card) .stocks-table-wrap thead th`，z-index 1）优先级更高，把左上角单元格的 z-index 3 压掉了。
 
+### 第八轮：通过 poortrader.com 登录 Google（2026-11-27 已部署：Pages `da6474c1`，Worker 没变）
+
+- 原因：Google 登录页显示的是回调地址的域名。以前回调在 Supabase，所以显示 `ethdmtzhgopviprocsny.supabase.co`。
+- 做法：
+  - 在 poortrader.com 上，Sign in 直接跳到 Google（OpenID Connect，`response_type=id_token`，带 nonce 的 SHA-256 和 state）。
+  - Google 回到 `/auth/callback`（文件 `cloudflare/pages/auth/callback.html`）。这个页面把结果存进 localStorage，再回到原来的标签页。
+  - index.html 的 `finishDirect()` 检查 state，然后用 `signInWithIdToken` 交给 Supabase 建立会话。账号、列表、权限都不变。
+  - 现在 Google 页面显示 "poortrader.com"。
+- 后备：
+  - Supabase 拒绝 token 时，自动改用原来的 Supabase 登录（`signInWithOAuth`，PKCE），并在这台设备上停用新方式 24 小时（`kb.gsi.off`）。
+  - 其他域名（本地预览、pages.dev）一直用原来的方式。
+- 设置：
+  - Google Cloud（项目 kiwiboard-515907）的 Web 客户端加了重定向地址 `https://poortrader.com/auth/callback`。原来的 Supabase 回调地址要保留，后备要用。
+  - Supabase 不用改，用的是同一个 Google 客户端。
+- 坑：scope 里的空格必须写成 `%20`。用 `URLSearchParams` 生成的是 `+`，Google 每次都报 "redirect_uri_mismatch"，这个报错有误导性。
+  - 第一次上线（Pages `f67e2e71`）和第二次（`039cb46a`）因此各有约 1 分钟点 Sign in 会进 Google 的错误页（03:12、03:15 UTC），随后马上暂停（`2bcf446f`、`e5290948`）。
+  - 改成 `%20` 后上线 `da6474c1`。
+- 验证：
+  - 线上用浏览器真实登录了一次：Google 页面没有报错，回到 Watchlist，已登录（admin），没有触发后备。
+  - 本地测了取消登录、state 不对、直接打开回调页、Supabase 拒绝 token 后自动改用旧方式。
+- 测试注意：内置浏览器已经登录了用户的 Google 账号，任何登录测试都会直接以用户身份（admin）完成。测完用 `client.auth.signOut({ scope: 'local' })` 结束，不能用页面的 Sign out（supabase-js 默认 global，会让所有设备都退出）。
+- 只停用新方式：把 `DIRECT_ORIGIN` 改成 `""` 再部署。
+- 以后想让 Google 页面显示 "kiwiboard" 和图标：需要 Google 的品牌验证，要求在 Search Console 验证 poortrader.com、首页名字一致、有隐私政策页。
+
 ## 平台限制
 
 - **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
 - **Supabase free**：项目 7 天没有活动会被暂停。可以让 Worker cron 每天对 Supabase 做一次轻量查询，保持活跃。
 - **D1 Free**：每天最多读 500 万行、写 10 万行，UTC 0 点重置。超了以后所有读数据的查询都会失败，直到重置或升级 Workers Paid（$5/月）。D1 按扫描的行数计费，新查询要避免全表扫描（见第五轮）。
 - **Workers Free**：每次调用的 CPU 时间上限是 10ms。档位推送只需要算 1 次 + 发 N 条，用户少的时候没问题。订阅数到几百以后，改用 Queues 分批发送，或者升级到付费计划。
-- **Google 登录页**：上面显示的是 `<ref>.supabase.co`。要换成自己的域名，需要 Supabase 的付费 custom domain。
+- **Google 登录页**：从第八轮起，poortrader.com 上显示 "poortrader.com"。后备的 Supabase 登录和其他域名仍显示 `<ref>.supabase.co`。要显示 "kiwiboard" 和图标，需要 Google 品牌验证。
 - **密钥**：service_role key 只能放在 Worker secret 里，绝不能出现在 `index.html`。DB 密码只有 CLI 或 psql 才会用到，网站本身用不到。
 
 ## 回滚
 
 - **代码**：
+  - 第八轮之前：`git checkout f917e35 -- cloudflare/pages/index.html`，再删掉 `cloudflare/pages/auth/`
   - 第七轮之前：`git checkout 8409724 -- cloudflare/pages/index.html`
   - 第六轮之前：`git checkout 683522e -- cloudflare/pages/index.html cloudflare/worker/src README.md`
   - 第五轮之前：`git checkout 02b91c3 -- cloudflare/pages/index.html cloudflare/worker/src/lib/db.ts cloudflare/schema.sql`
@@ -333,6 +358,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
   - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
   - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
 - **线上版本**：
+  - 第八轮之前：Pages `7e4324fc`。只想停用新的登录方式的话，把 `DIRECT_ORIGIN` 改成 `""` 再部署就行。
   - 第七轮之前：Pages `7e346e49`（这一轮只改了页面，Worker 不用退）。
   - 第六轮之前：Pages `5e855b90`，Worker `0261a32a`。新页面要用新 Worker 的 `assets=` 参数（只退 Worker 的话，自己加的期货和加密货币没有数据），所以先退 Pages，再退 Worker。
   - 第五轮之前：Pages `3e8e6069`，Worker `1a6dad14`。页面和 Worker 互不依赖，可以分开回滚；退 Worker 会让 D1 读取量回到超限的水平。

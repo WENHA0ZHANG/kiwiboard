@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Signing in · kiwiboard</title>
+  <style>
+    html { background: #fbf8ee; color: #6b6b6b; }
+    html[data-theme="dark"] { background: #1c1c1c; color: #a3a3a3; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+  </style>
+  <script>
+    // Google sends people back here after "Sign in" (see startDirect in
+    // index.html). The result is in the URL fragment, which never reaches a
+    // server: #id_token=…&state=… or #error=…. Leave it for the main page,
+    // which checks the state and asks Supabase to start the session, then
+    // go back to the tab the user started from.
+    (function () {
+      var d = document.documentElement, t = null;
+      try { t = localStorage.getItem("kb.theme"); } catch (e) {}
+      if (t !== "light" && t !== "dark") {
+        t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      d.setAttribute("data-theme", t);
+
+      var p = new URLSearchParams(location.hash.slice(1));
+      var tab = "prediction";
+      try {
+        var pending = JSON.parse(localStorage.getItem("kb.gsi") || "null");
+        if (pending && /^[a-z]+$/.test(pending.tab || "")) tab = pending.tab;
+        if (p.get("id_token") || p.get("error")) {
+          localStorage.setItem("kb.gsi.result", JSON.stringify({
+            idToken: p.get("id_token") || "",
+            state: p.get("state") || "",
+            error: p.get("error") || "",
+          }));
+        }
+      } catch (e) {}
+      location.replace("/#" + tab);
+    })();
+  </script>
+</head>
+<body>
+  <p>Signing in…</p>
+</body>
+</html>
