@@ -26,10 +26,10 @@ other app.
     <td width="25%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-signals-dark.png"><img src="docs/screenshots/phone-signals-light.png" alt="Signals tab on a phone: which indicators are firing top or bottom signals" width="100%"></picture></td>
   </tr>
   <tr>
-    <td align="center"><b>Market</b><br><sub>The regime first, then the key numbers</sub></td>
-    <td align="center"><b>Watchlist</b><br><sub>Trade plan and chart for each stock</sub></td>
-    <td align="center"><b>Global</b><br><sub>World indices at a glance</sub></td>
-    <td align="center"><b>Signals</b><br><sub>Which indicators are firing</sub></td>
+    <td align="center"><b>Market</b><br><sup>Regime first, then key numbers</sup></td>
+    <td align="center"><b>Watchlist</b><br><sup>Trade plan and chart per stock</sup></td>
+    <td align="center"><b>Global</b><br><sup>World indices at a glance</sup></td>
+    <td align="center"><b>Signals</b><br><sup>Which indicators are firing</sup></td>
   </tr>
 </table>
 
