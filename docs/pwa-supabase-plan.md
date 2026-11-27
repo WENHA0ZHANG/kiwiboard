@@ -255,16 +255,16 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 ### 第五轮：图表、手机细节和 D1 读取超限（2026-11-26 已部署：Worker `0261a32a`，Pages `5e855b90`）
 
 **D1 超限（当天线上数据接口全部 500）**
-- 2026-11-26 过去 24 小时读了 604 万行，超过免费版每天 500 万行。超限后所有读数据的查询都报 `D1_ERROR … daily row read limit`（code 7500），Worker 返回 1101，页面上指标、档位、Watchlist 都加载不出来，直到 UTC 0 点（新加坡早上 8 点）重置。
+- 2026-11-26 过去 24 小时读了 604 万行，超过免费版每天 500 万行。超限后所有读数据的查询都报 `D1_ERROR … daily row read limit`（code 7500），Worker 返回 1101，页面上指标、档位、Watchlist 都加载不出来，直到 UTC 0 点（新加坡早上 8 点）重置。11-27 早上 8 点重置后全部恢复。
 - 原因：两条查询每次都扫整张 `observations`（约 4,600 行）。
   - `getLatestObservations`（`GROUP BY indicator_id`），一天约 900 次，417 万行。
   - `getLastUpdateTime` 的 `MAX(inserted_at)`，一天约 350 次，162 万行。
 - 修复：
   - `getLatestObservations` 改成递归 CTE，沿主键 (indicator_id, as_of) 逐个找指标，每个指标只做几次索引查找。本地用 seed 数据对比，结果和旧查询完全一样（17 行），全表扫描步数从 3,527 降到 0。
-  - `schema.sql` 新增 `idx_observations_inserted_at`，让 `MAX(inserted_at)` 只读 1 行。**这个索引还要在线上建一次**，必须等额度重置以后（建索引本身要读整张表）：
+  - `schema.sql` 新增 `idx_observations_inserted_at`，让 `MAX(inserted_at)` 只读 1 行。线上已在 2026-11-27 08:03（新加坡时间）额度重置后建好，查询计划是 `SEARCH observations USING COVERING INDEX idx_observations_inserted_at`。别的已有数据库要补建的话用这条命令（建的时候要读整张表）：
     `npx wrangler d1 execute poor-trader-db --remote --command "CREATE INDEX IF NOT EXISTS idx_observations_inserted_at ON observations(inserted_at);"`
-  - 预计每天读取约 30 万行（没建索引时约 190 万行，也在额度内）。
-- 查看用量：`npx wrangler d1 info poor-trader-db`；找最耗读取的查询：`npx wrangler d1 insights poor-trader-db --timePeriod 1d --sort-by reads --sort-direction DESC`。
+  - 实测（11-27 重置后的两小时）：每小时读 1.8 万到 2.9 万行，折合每天 40 万到 70 万行，约为额度的十分之一。最新值的递归 CTE 每次读 50 到 70 行（旧查询约 4,460 行），`MAX(inserted_at)` 每次读 1 行。现在读得最多的是 `getRecentObservations`（指标走势图和收益率曲线的历史数据，每次约 300 行，读到的都是要用的数据）。
+- 查看用量：`npx wrangler d1 info poor-trader-db`（rows_read_24h 是滚动的 24 小时，不是按 UTC 天算的额度）；找最耗读取的查询：`npx wrangler d1 insights poor-trader-db --timePeriod 1d --sort-by reads --sort-direction DESC`（只看重置以后的用量，可以按小时算，比如 `--timePeriod 2h`）。
 
 **页面**
 - 指标走势图：Top / Bottom / Latest 标签加了底板，数值简化（"Latest 15"，不再写 "15.00 0-100"），并优先放在曲线不经过的位置。
@@ -291,7 +291,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 - 页脚改成 "kiwiboard · a fresh cut of the market."（小写 a）。
 - D1 读不了的时候 News 页照常显示：`/api/market-overview`、`/api/stock-detail` 的新闻和 `/api/market-news` 的 D1 缓存读写失败时，直接从 Yahoo / Finnhub 拉取。Market Headlines 请求失败时显示 "Headlines are unavailable right now."，不再一直停在 Loading。
 - README 只改了文字（News 介绍和 API 表）。截图里没有 News 页，所以没换图。
-- 2026-11-26 23:30（新加坡时间）查过：D1 仍然超限（24 小时读 612 万行），要等 11-27 早上 8 点重置以后，才能建第五轮的 `idx_observations_inserted_at`。
+- 部署时 D1 还在超限（11-26 23:30 新加坡时间查过，24 小时读 612 万行），News 页照常可用。11-27 早上 8 点重置后，其他接口全部恢复，第五轮的 `idx_observations_inserted_at` 也在 08:03 建好了。
 
 ## 平台限制
 
