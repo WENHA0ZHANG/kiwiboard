@@ -768,23 +768,27 @@
       }
       .wl-bottom-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 24px; align-items: start; }
       .wl-side { display: flex; flex-direction: column; gap: 24px; }
+      /* Market Timing tiles stack one per row at every width. A tile needs
+         about 290px to keep "Nasdaq 100 · QQQ 633.93 -0.65%" on one line,
+         and three across never gets that much (each was ~210px at 720px). */
       .wl-side .wl-timing-grid { grid-template-columns: 1fr; }
       @media (max-width: 1024px) {
         .wl-top-grid, .wl-bottom-grid { grid-template-columns: 1fr; }
-        .wl-side .wl-timing-grid { grid-template-columns: repeat(3, 1fr); }
       }
-      @media (max-width: 680px) { .wl-side .wl-timing-grid { grid-template-columns: 1fr; } }
       /* Left cards are height-locked (JS) to their right-hand neighbours. */
       .wl-top-grid .wl-focus-card,
       .wl-bottom-grid .wl-table-card { display: flex; flex-direction: column; min-height: 0; }
       .wl-top-grid .wl-focus-card > h2,
-      .wl-bottom-grid .wl-table-card > h2,
-      .wl-bottom-grid .wl-table-card > .wl-add-row { flex: 0 0 auto; }
+      .wl-bottom-grid .wl-table-card > .wl-head { flex: 0 0 auto; }
       .wl-top-grid .wl-focus-list,
       .wl-top-grid .wl-focus-empty { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
       .wl-table-scroll { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
       .wl-table-card thead th { position: sticky; top: 0; z-index: 2; }
 
+      /* Title and subtitle on one row; if the column is ever too narrow the
+         subtitle ends in "…" rather than dropping to a second line. */
+      .wl-timing-card > h2 { flex-wrap: nowrap; white-space: nowrap; }
+      .wl-timing-card > h2 > .meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .wl-timing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 2px 22px 22px; }
       @media (max-width: 860px) { .wl-timing-grid { grid-template-columns: 1fr; } }
       .wl-timing-tile {
@@ -852,9 +856,38 @@
       .wl-focus-item .wl-chg.down { color: var(--bear); }
       .wl-focus-item .wl-chg .wl-volr { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
 
-      .wl-table-card .wl-add-row { display: flex; gap: 8px; padding: 2px 22px 0; align-items: center; flex-wrap: wrap; }
-      .wl-table-card .wl-add-row input { flex: 0 1 400px; }
-      .wl-table-card .wl-add-status { font-size: 13px; color: var(--muted); margin-left: auto; }
+      /* Watchlist header: the title and Reload, then the add box (or the
+         sign-in prompt) across the full width underneath, like Futures &
+         Crypto. The full-width box keeps the suggestion list wide enough
+         for whole company names at every page width. */
+      .wl-head {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "title reload" "tools tools";
+        align-items: center; gap: 14px 16px;
+        padding: 22px 26px 12px;
+      }
+      .wl-head > h2 {
+        grid-area: title; margin: 0; min-width: 0;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        font-size: 21px; line-height: 1.3; font-weight: 700; letter-spacing: -0.012em;
+        color: var(--text-strong);
+      }
+      .wl-head > :is(.wl-add-row, .wl-signin-row) { grid-area: tools; min-width: 0; }
+      .wl-head > .wl-reload {
+        grid-area: reload; font-size: 14px; font-weight: 500;
+        color: var(--muted); text-decoration: none;
+      }
+      .wl-head > .wl-reload:hover { color: var(--text-strong); }
+      .wl-table-card .wl-add-row { display: flex; gap: 8px; align-items: center; }
+      .wl-table-card .wl-add-row input { flex: 1 1 0; }
+      .wl-table-card .wl-add-row button { flex: none; }
+      /* Messages appear just under the box, in the gap above the table, so
+         the header keeps its height. */
+      .wl-table-card .wl-add-status {
+        position: absolute; left: 0; top: calc(100% + 3px); max-width: 100%;
+        font-size: 12.5px; line-height: 16px; color: var(--muted);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+      }
       .wl-table-card .wl-add-status.err { color: var(--bear); }
       .wl-table-card .wl-sym-cell small.wl-nodata { color: var(--warning); }
 
@@ -883,9 +916,11 @@
       .sym-opt .sym-ex { font-size: 12px; color: var(--muted); white-space: nowrap; }
       .sym-opt:hover, .sym-opt.is-active { background: var(--surface-hover); }
       .wl-table-card .wl-signin-row {
-        display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
-        padding: 2px 22px 0; font-size: 14px; color: var(--muted);
+        display: flex; gap: 12px; align-items: center;
+        font-size: 14px; color: var(--muted);
       }
+      .wl-signin-row #wl-signin-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .wl-signin-row button { flex: none; }
       .wl-table-card table { margin-top: 14px; }
       .wl-table-card td, .wl-table-card th { padding: 11px 12px; font-size: 14.5px; text-align: right; }
       .wl-table-card th { font-size: 12.5px; white-space: nowrap; }
@@ -906,11 +941,10 @@
       .wl-table-card .wl-vr-up { color: var(--bull); font-weight: 600; }
       .wl-table-card .wl-sym-cell { font-weight: 700; color: var(--text-strong); white-space: nowrap; }
       .wl-table-card .wl-sym-cell small { margin-left: 6px; font-weight: 400; color: var(--muted); }
-      .wl-table-card .wl-rm-btn {
-        width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-sm);
-        background: transparent; color: var(--faint); cursor: pointer; font-size: 17px; line-height: 1;
-      }
-      .wl-table-card .wl-rm-btn:hover { color: var(--bear); background: var(--surface-hover); }
+      /* Symbol and the row buttons take only the room they need, so the
+         spare width spreads evenly between the number columns and the gap
+         after the ticker matches the gaps between the numbers. */
+      .wl-table-card th:is(:first-child, :last-child) { width: 1%; }
       .wl-table-card .wl-grip { color: var(--faint); margin-right: 8px; cursor: grab; font-size: 12px; user-select: none; }
       .wl-table-card tr.wl-row:hover .wl-grip { color: var(--muted); }
       .wl-table-card tr.wl-row.wl-dragging { opacity: 0.4; }
@@ -969,8 +1003,17 @@
       .wl-legend-hint b { color: var(--text); font-weight: 600; }
       .wl-intro { padding: 20px 22px; color: var(--muted); font-size: 14px; line-height: 1.6; }
       .wl-intro b { color: var(--text); font-weight: 600; }
-      .wl-glossary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 18px; }
-      .wl-glossary .gl-item code { margin-right: 4px; font-weight: 600; color: var(--text-strong); }
+      /* One term per line: the codes sit in an 84px column so the
+         explanations line up. The longest line is about 285px, so the side
+         card shows one column and full-width cards (tablets) two; nothing
+         wraps. */
+      .wl-glossary { columns: 290px; column-gap: 28px; }
+      .wl-glossary .gl-item {
+        display: grid; grid-template-columns: minmax(84px, max-content) minmax(0, 1fr);
+        align-items: baseline; column-gap: 12px; padding: 3px 0; break-inside: avoid;
+      }
+      .wl-glossary .gl-item code { justify-self: start; font-weight: 600; color: var(--text-strong); }
+      .wl-glossary .gl-item span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
       /* ═══════════════════ Footer ═══════════════════ */
       .site-footer {
@@ -1292,6 +1335,20 @@
         .table-scroll.sticky-first th:first-child,
         .stocks-table-wrap th:first-child,
         .wl-table-scroll th:first-child { z-index: 3; background: var(--surface); }
+        /* The News tables' header rule sets z-index 1 with a stronger
+           selector, which let the pinned cell of a row scrolled under the
+           header paint over "Name". Keep the corner on top. */
+        :is(.stocks-card, .assets-card) .stocks-table-wrap thead th:first-child { z-index: 3; }
+        /* Text keeps clear of the pinned column's divider on both sides
+           (Date, the 2nd column, is hidden on phones). */
+        .stocks-table-wrap :is(th, td):first-child { padding-right: 14px; }
+        .stocks-table-wrap :is(th, td):nth-child(3) { padding-left: 14px; }
+        /* Watchlist: 16px either side of the divider and 8px elsewhere, so
+           the table fits without sideways scrolling from about 700px. */
+        .wl-table-scroll :is(th, td) { padding-left: 8px; padding-right: 8px; }
+        .wl-table-scroll :is(th, td):first-child { padding-left: 16px; padding-right: 16px; }
+        .wl-table-scroll :is(th, td):nth-child(2) { padding-left: 16px; }
+        .wl-table-scroll :is(th, td):last-child { padding-right: 16px; }
         /* Row tints are opaque tokens, so the pinned cell can reuse them. */
         .table-scroll.sticky-first tr:hover td:first-child,
         .stocks-table-wrap tr:hover td:first-child,
@@ -1334,7 +1391,10 @@
         .signal-counts { padding: 0 16px 12px; }
         .wl-focus-list { padding: 2px 14px 14px; }
         .wl-timing-grid { padding: 2px 14px 14px; }
-        .wl-table-card .wl-add-row, .wl-table-card .wl-signin-row { padding: 0 16px; }
+        .wl-head { gap: 10px 12px; padding: 16px 16px 10px; }
+        .wl-head > h2 { font-size: 18px; }
+        .wl-table-card .wl-signin-row { flex-wrap: wrap; }
+        .wl-signin-row #wl-signin-text { white-space: normal; }
         .wl-detail-header { padding: 18px 16px 4px; }
         /* Key metrics: one 4-across strip; the explanations live in the glossary. */
         .wl-key-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 12px 16px 2px; }
@@ -1678,14 +1738,14 @@
               <table data-table-key="assets">
                 <thead>
                   <tr>
-                    <th style="width: 16%">Name</th>
-                    <th style="width: 12%">Date</th>
-                    <th style="width: 13%">Latest</th>
-                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1w_pct"><span class="th-sort-label">1W <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1m_pct"><span class="th-sort-label">1M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_3m_pct"><span class="th-sort-label">3M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1y_pct"><span class="th-sort-label">1Y <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                    <th style="width: 19%; padding-right: 16px;"></th>
+                    <th style="width: 12%">Name</th>
+                    <th style="width: 10%">Date</th>
+                    <th style="width: 14%">Latest</th>
+                    <th style="width: 13%" class="th-sortable" data-sort-col="chg_1w_pct"><span class="th-sort-label">1W <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 13%" class="th-sortable" data-sort-col="chg_1m_pct"><span class="th-sort-label">1M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 13%" class="th-sortable" data-sort-col="chg_3m_pct"><span class="th-sort-label">3M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 13%" class="th-sortable" data-sort-col="chg_1y_pct"><span class="th-sort-label">1Y <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 1%; padding-right: 16px;"></th>
                   </tr>
                 </thead>
                 <tbody id="market-body-assets">
@@ -1706,14 +1766,14 @@
               <table data-table-key="stocks">
                 <thead>
                   <tr>
-                    <th style="width: 16%">Name</th>
-                    <th style="width: 12%">Date</th>
-                    <th style="width: 13%">Latest</th>
-                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1w_pct"><span class="th-sort-label">1W <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1m_pct"><span class="th-sort-label">1M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_3m_pct"><span class="th-sort-label">3M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                    <th style="width: 10%" class="th-sortable" data-sort-col="chg_1y_pct"><span class="th-sort-label">1Y <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
-                    <th style="width: 19%; padding-right: 16px;"></th>
+                    <th style="width: 12%">Name</th>
+                    <th style="width: 10%">Date</th>
+                    <th style="width: 14%">Latest</th>
+                    <th style="width: 13%" class="th-sortable" data-sort-col="chg_1w_pct"><span class="th-sort-label">1W <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 13%" class="th-sortable" data-sort-col="chg_1m_pct"><span class="th-sort-label">1M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 13%" class="th-sortable" data-sort-col="chg_3m_pct"><span class="th-sort-label">3M <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 13%" class="th-sortable" data-sort-col="chg_1y_pct"><span class="th-sort-label">1Y <span class="th-sort-arrows"><span class="th-arrow-up">▲</span><span class="th-arrow-dn">▼</span></span></span></th>
+                    <th style="width: 1%; padding-right: 16px;"></th>
                   </tr>
                 </thead>
                 <tbody id="market-body-stocks">
@@ -1995,18 +2055,21 @@
       <!-- Row 2: My Watchlist (left, wider) + market timing & glossary (right) -->
       <div class="wl-bottom-grid">
         <div class="card wl-table-card">
-          <h2><span id="wl-list-title">My Watchlist</span>
-            <a href="#" id="wl-reload-link" onclick="loadWatchlist(true); return false;">Reload</a>
-          </h2>
-          <!-- Shown instead of the add row when signed out (shared list is read-only). -->
-          <div class="wl-signin-row" id="wl-signin-row" hidden>
-            <span id="wl-signin-text">Sign in to keep your own watchlist.</span>
-            <button type="button" id="wl-signin-btn">Sign in</button>
-          </div>
-          <div class="wl-add-row" id="wl-add-row">
-            <input id="wl-add-symbol" type="text" placeholder="Ticker or company name" maxlength="40" />
-            <button onclick="addWatchlistSymbol(); return false;">Add</button>
-            <span class="wl-add-status" id="wl-add-status"></span>
+          <!-- Title and Reload, then the add box (or sign-in prompt) across
+               the full width, like Futures & Crypto. -->
+          <div class="wl-head">
+            <h2 id="wl-list-title">My Watchlist</h2>
+            <!-- Shown instead of the add row when signed out (shared list is read-only). -->
+            <div class="wl-signin-row" id="wl-signin-row" hidden>
+              <span id="wl-signin-text">Sign in to keep your own watchlist.</span>
+              <button type="button" id="wl-signin-btn">Sign in</button>
+            </div>
+            <div class="wl-add-row" id="wl-add-row">
+              <input id="wl-add-symbol" type="text" placeholder="Ticker or company name" maxlength="40" />
+              <button onclick="addWatchlistSymbol(); return false;">Add</button>
+              <span class="wl-add-status" id="wl-add-status"></span>
+            </div>
+            <a href="#" class="wl-reload" id="wl-reload-link" onclick="loadWatchlist(true); return false;">Reload</a>
           </div>
           <div class="wl-table-scroll">
           <table>
@@ -2033,7 +2096,7 @@
         <div class="wl-side">
           <div class="card wl-timing-card">
             <h2>Market Timing
-              <span class="meta" id="wl-timing-meta" style="float:right; font-weight:400;">—</span>
+              <span class="meta" id="wl-timing-meta">Daily · 8 / 21 / 50 EMA</span>
             </h2>
             <div class="wl-timing-grid" id="wl-timing-grid">
               <div class="wl-timing-tile" data-loading="1"><div class="wt-name">S&amp;P 500 · SPY</div><div class="wt-status">Loading…</div></div>
@@ -2046,18 +2109,19 @@
             <h2 class="gl-head fold-head">Glossary</h2>
             <div class="wl-intro">
               <div class="wl-glossary">
-                <div class="gl-item"><code>LOD</code> Low of Day</div>
-                <div class="gl-item"><code>ADR</code> Average Daily Range</div>
-                <div class="gl-item"><code>ATR</code> Average True Range</div>
-                <div class="gl-item"><code>PEG</code> Power Earnings Gap</div>
-                <div class="gl-item"><code>HVE</code> Highest Volume Ever</div>
-                <div class="gl-item"><code>HTF</code> High Tight Flag</div>
-                <div class="gl-item"><code>Cup&amp;H</code> Cup &amp; Handle base</div>
-                <div class="gl-item"><code>RSI</code> Relative Strength Index (14)</div>
-                <div class="gl-item"><code>VolR</code> Volume vs. 21-day average</div>
-                <div class="gl-item"><code>Stop / TP1 / TP2</code> Suggested stop and +3R / +5R targets</div>
-                <div class="gl-item"><code>R</code> Risk (entry − stop) per share</div>
-                <div class="gl-item"><code>(W)</code> Pattern detected on the weekly timeframe</div>
+                <div class="gl-item"><code>LOD</code><span>Low of Day</span></div>
+                <div class="gl-item"><code>ADR</code><span>Average Daily Range</span></div>
+                <div class="gl-item"><code>ATR</code><span>Average True Range</span></div>
+                <div class="gl-item"><code>PEG</code><span>Power Earnings Gap</span></div>
+                <div class="gl-item"><code>HVE</code><span>Highest Volume Ever</span></div>
+                <div class="gl-item"><code>HTF</code><span>High Tight Flag</span></div>
+                <div class="gl-item"><code>Cup&amp;H</code><span>Cup &amp; Handle base</span></div>
+                <div class="gl-item"><code>RSI</code><span>Relative Strength Index (14)</span></div>
+                <div class="gl-item"><code>VolR</code><span>Volume vs. 21-day average</span></div>
+                <div class="gl-item"><code>Stop</code><span>Suggested stop loss</span></div>
+                <div class="gl-item"><code>TP1 / TP2</code><span>Profit targets at +3R / +5R</span></div>
+                <div class="gl-item"><code>R</code><span>Risk (entry − stop) per share</span></div>
+                <div class="gl-item"><code>(W)</code><span>Pattern on the weekly chart</span></div>
               </div>
             </div>
           </div>
@@ -2514,6 +2578,10 @@
           return decorated.map((d) => d.r);
         }
 
+        // Row button icons, shared by the News tables and the watchlist.
+        const ICON_MOVE_TOP = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14"/><path d="M12 20V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/></svg>';
+        const ICON_REMOVE = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
+
         // "Move to top" and "Remove" buttons at the end of a market row.
         function _rowActionsCell(onTop, onRemove) {
           const td = document.createElement("td");
@@ -2531,8 +2599,8 @@
             b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); });
             return b;
           };
-          actions.appendChild(button("stock-move-top-btn", "Move to top", '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14"/><path d="M12 20V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/></svg>', onTop));
-          actions.appendChild(button("stock-remove-btn", "Remove", '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>', onRemove));
+          actions.appendChild(button("stock-move-top-btn", "Move to top", ICON_MOVE_TOP, onTop));
+          actions.appendChild(button("stock-remove-btn", "Remove", ICON_REMOVE, onRemove));
           td.appendChild(actions);
           return td;
         }
@@ -4634,10 +4702,12 @@
             if (!resp.ok) return;
             const data = await resp.json();
             const rows = data.rows || [];
+            // The subtitle stays "Daily · 8 / 21 / 50 EMA" so it fits on the
+            // title row; the update time is in its tooltip.
             if (meta) {
-              meta.textContent = data.as_of_utc
-                ? "Daily · 8 / 21 / 50 EMA · " + new Date(data.as_of_utc).toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" })
-                : "Daily · 8 / 21 / 50 EMA";
+              meta.title = data.as_of_utc
+                ? "Updated " + new Date(data.as_of_utc).toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" })
+                : "";
             }
             grid.innerHTML = rows.map(r => {
               if (!r || !r.ok) {
@@ -4743,22 +4813,43 @@
               <td class="${_wlVolRClass(m.vol_ratio)}">${m.vol_ratio == null ? "—" : _wlFmt(m.vol_ratio, 2) + "×"}</td>
               <td>${m.adr_pct == null ? "—" : _wlFmt(m.adr_pct, 2) + "%"}</td>
               <td>${_wlFmt(m.rsi, 1)}</td>
-              <td>${editable ? `<button class="wl-rm-btn" title="Remove" data-rm="${sym}">×</button>` : ""}</td>
+              <td>${editable ? `<span class="stock-row-actions"><button type="button" class="stock-move-top-btn" title="Move to top" aria-label="Move ${sym} to top" data-top="${sym}">${ICON_MOVE_TOP}</button><button type="button" class="stock-remove-btn" title="Remove" aria-label="Remove ${sym}" data-rm="${sym}">${ICON_REMOVE}</button></span>` : ""}</td>
             </tr>`;
           }).join("");
           tbody.querySelectorAll(".wl-row").forEach(tr => {
             tr.addEventListener("click", (ev) => {
-              if (ev.target && ev.target.classList && ev.target.classList.contains("wl-rm-btn")) return;
+              if (ev.target && ev.target.closest && ev.target.closest("button")) return;
               loadWatchlistDetail(tr.dataset.sym);
             });
             if (editable) _wlWireDrag(tr);
           });
-          tbody.querySelectorAll(".wl-rm-btn").forEach(btn => {
+          // Same buttons as the News tables: move to top, remove.
+          tbody.querySelectorAll("button[data-top]").forEach(btn => {
+            btn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              _wlMoveToTop(btn.dataset.top);
+            });
+          });
+          tbody.querySelectorAll("button[data-rm]").forEach(btn => {
             btn.addEventListener("click", (ev) => {
               ev.stopPropagation();
               removeWatchlistSymbol(btn.dataset.rm);
             });
           });
+        }
+
+        // Move-to-top button: the same change as dragging the row to the
+        // top, saved the same way. The list scrolls up so the row stays in
+        // view.
+        function _wlMoveToTop(sym) {
+          const rows = wlData.rows || [];
+          const from = rows.findIndex(r => r.symbol === sym);
+          if (from <= 0) return;
+          rows.unshift(rows.splice(from, 1)[0]);
+          renderWatchlistTable();
+          _wlPersistOrder();
+          const scroller = document.querySelector(".wl-table-scroll");
+          if (scroller) scroller.scrollTo({ top: 0, behavior: "smooth" });
         }
 
         // ── Drag-to-reorder for My Watchlist rows ────────────────────────────

@@ -293,6 +293,27 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 - README 只改了文字（News 介绍和 API 表）。截图里没有 News 页，所以没换图。
 - 部署时 D1 还在超限（11-26 23:30 新加坡时间查过，24 小时读 612 万行），News 页照常可用。11-27 早上 8 点重置后，其他接口全部恢复，第五轮的 `idx_observations_inserted_at` 也在 08:03 建好了。
 
+### 第七轮：Watchlist 和 News 表格（2026-11-27 已部署：Pages `7e4324fc`，Worker 没变，仍是 `e3005b82`）
+
+只改了 `cloudflare/pages/index.html`。原则：文字不折成两行，表格里不留大块空白。
+
+**Watchlist 页**
+- Glossary：每行一个术语，缩写单独一列（84px），解释对齐。电脑侧栏里一列，平板全宽时两列（CSS `columns: 290px`）。"Stop / TP1 / TP2" 拆成两条；"(W)" 改成 "Pattern on the weekly chart"。
+- Market Timing：副标题只写 "Daily · 8 / 21 / 50 EMA"，和标题在同一行，更新时间放进悬停提示。三个方块在所有宽度都一行一个。以前 681–1024px 三个并排，每个约 210px，名字会折行；一行放下名字、价格和涨跌要约 290px。
+- My Watchlist 标题区（`.wl-head`）：
+  - 第一行是标题和 Reload。
+  - 第二行是添加框（未登录时是登录提示），占满整行，和 Futures & Crypto 一样，所以候选列表一样宽，公司名完整显示。添加框曾试过放进标题行，但用户觉得框变短、下面的候选也跟着变短，所以改回第二行。
+  - 添加提示浮在输入框下方，表格不会跳动。
+- 表格：
+  - Symbol 列和按钮列只占需要的宽度（`width: 1%`），多余空间平均分给数字列，股票代码和价格之间的空隙和其他列一样。
+  - 每行末尾加了和 News 一样的置顶、删除图标按钮。置顶由 `_wlMoveToTop` 实现，保存方式和拖动排序相同（admin：`POST /api/watchlist/reorder`；个人列表：Supabase `reorder_watchlist`）。还没有在登录状态下实际测过。
+- 手机（≤720px）：固定的第一列两边各留 16px，其他单元格左右 8px，约 700px 宽时表格不用横向滚动。
+
+**News 页表格**
+- 列宽：Name 12%、Date 10%、Latest 14%、1W/1M/3M/1Y 各 13%，按钮列 `width: 1%`（以前 19%）。1440px 时 1Y 到置顶按钮的空白从约 50px 减到 29px；1280px 也不折行、不横向滚动。
+- 手机：固定列两边留 14px。
+- 修复了线上原有的问题：手机上表格上下滚动时，第一行盖住表头 "Name"。原因是桌面的表头规则（`:is(.stocks-card, .assets-card) .stocks-table-wrap thead th`，z-index 1）优先级更高，把左上角单元格的 z-index 3 压掉了。
+
 ## 平台限制
 
 - **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
@@ -305,12 +326,14 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 ## 回滚
 
 - **代码**：
+  - 第七轮之前：`git checkout 8409724 -- cloudflare/pages/index.html`
   - 第六轮之前：`git checkout 683522e -- cloudflare/pages/index.html cloudflare/worker/src README.md`
   - 第五轮之前：`git checkout 02b91c3 -- cloudflare/pages/index.html cloudflare/worker/src/lib/db.ts cloudflare/schema.sql`
   - 第三轮之前：`git checkout backup/pre-phone-pass-2026-11-26 -- cloudflare/pages/index.html`
   - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
   - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
 - **线上版本**：
+  - 第七轮之前：Pages `7e346e49`（这一轮只改了页面，Worker 不用退）。
   - 第六轮之前：Pages `5e855b90`，Worker `0261a32a`。新页面要用新 Worker 的 `assets=` 参数（只退 Worker 的话，自己加的期货和加密货币没有数据），所以先退 Pages，再退 Worker。
   - 第五轮之前：Pages `3e8e6069`，Worker `1a6dad14`。页面和 Worker 互不依赖，可以分开回滚；退 Worker 会让 D1 读取量回到超限的水平。
   - 第四轮之前：Pages `ec183e75`，Worker `6d27fc5c`。回滚时先退 Pages，再退 Worker。
