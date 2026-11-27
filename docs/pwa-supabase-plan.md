@@ -347,6 +347,16 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 - 头像比旁边的图标高 2.5px：它外面的两个 span 按文字排版，多出行高（43px，按钮是 38px）。改成 inline-flex 后和图标在同一条中线上。
 - 实测（线上，1440px）：kiwiboard、标签、日期、Live 的基线都在 52.4–52.5px；主题按钮、Sign in、头像的中心都在 47.2px。平板（768、1024）的 Live 也和 kiwiboard 对齐；手机顶栏没变。
 
+### 第十轮：Band thresholds 收起后卡片缩不回去（2026-11-27 已部署：Pages `5a8026f6`，Worker 没变）
+
+只改了 `cloudflare/pages/index.html` 的 CSS（电脑端 Market 页）：
+- 现象：展开 Market Regime 的 "Band thresholds" 再收起，它和左边的指标图两张卡片停在展开时的高度（1440px：456 → 674 → 收起后还是 673px）。
+- 原因：图表的框是 `flex: 1 1 auto`，会跟着这一行变高；Chart.js 再把新的高度（557px）写到 canvas 上。canvas 在正常排版里，这个高度反过来撑住了框，这一行就缩不回去了。
+- 改法：canvas 改成 `position: absolute`，框加 `overflow: hidden`。框的高度只由这一行决定，图表跟着框变。
+- 实测：1440px（本地和线上）456 → 674 → 456，来回几次都一样；1100px 500 → 661 → 500；1024px 和手机是单列，图表保持 340 / 250px。切换标签页、展开时换一个指标，收起后也都能缩回去。
+- 只有这张图有这个问题，其他图（News、Global、Watchlist）是固定高度。
+- 测试注意：后台标签页里 Chart.js 不会重画（它靠 requestAnimationFrame），要把标签页切到前台再量。
+
 ## 平台限制
 
 - **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
@@ -359,6 +369,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 ## 回滚
 
 - **代码**：
+  - 第十轮之前：`git checkout 151e288 -- cloudflare/pages/index.html`
   - 第九轮之前：`git checkout 08ad130 -- cloudflare/pages/index.html`
   - 第八轮之前：`git checkout f917e35 -- cloudflare/pages/index.html`，再删掉 `cloudflare/pages/auth/`
   - 第七轮之前：`git checkout 8409724 -- cloudflare/pages/index.html`
@@ -368,6 +379,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
   - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
   - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
 - **线上版本**：
+  - 第十轮之前：Pages `5f57bc9d`（只改了 CSS）。
   - 第九轮之前：Pages `da6474c1`（只改了 CSS）。
   - 第八轮之前：Pages `7e4324fc`。只想停用新的登录方式的话，把 `DIRECT_ORIGIN` 改成 `""` 再部署就行。
   - 第七轮之前：Pages `7e346e49`（这一轮只改了页面，Worker 不用退）。

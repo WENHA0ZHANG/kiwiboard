@@ -462,7 +462,13 @@
       .kpi-sub b { font-weight: 600; }
 
       .trend-card { display: flex; flex-direction: column; }
-      .indicator-chart-canvas { position: relative; flex: 1 1 auto; min-height: 340px; margin: 6px 22px 20px 16px; }
+      .indicator-chart-canvas { position: relative; flex: 1 1 auto; min-height: 340px; margin: 6px 22px 20px 16px; overflow: hidden; }
+      /* The chart grows to the row's height (the Market Regime card beside it
+         gets taller while "Band thresholds" is open). Chart.js writes that
+         height onto the canvas in pixels, so a canvas in the normal flow
+         would then hold the row open after the list closes. Out of the flow,
+         the box sizes from the row alone and the chart follows it. */
+      .indicator-chart-canvas > canvas { position: absolute; top: 0; left: 0; }
       .trend-card .empty { padding-top: 0; }
       .indicator-table td { vertical-align: middle; }
       .indicator-row { cursor: pointer; }
