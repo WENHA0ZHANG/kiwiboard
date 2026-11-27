@@ -357,9 +357,21 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 - 只有这张图有这个问题，其他图（News、Global、Watchlist）是固定高度。
 - 测试注意：后台标签页里 Chart.js 不会重画（它靠 requestAnimationFrame），要把标签页切到前台再量。
 
+### 第十一轮：iOS 主屏幕 App 顶部的模糊（2026-11-27 已部署：Pages `b69c6bd7`，Worker 没变）
+
+只改了 `cloudflare/pages/index.html`：加了一个空的 `div.ios-top-edge` 和它的 CSS。
+- 现象：iOS 26 以后，加到主屏幕的 App 顶部会被系统的 Liquid Glass 模糊盖住，顶栏的 logo、kiwiboard 和按钮都糊了。用户截图（393×852pt）里模糊一直到距屏幕顶部约 96pt；页面从 59pt 开始，所以页面最上面约 37pt 被盖住。"kiwiboard" 的边缘对比只有页面里 "Market Regime" 的六成。
+- 原因：这是 WebKit 的 scroll edge 效果，不是我们的 CSS。只有页面顶端有 fixed 或 sticky 的盒子时，iOS 才会改用这个盒子的背景色填满状态栏，同时去掉模糊。WebKit 在顶部中间往下 4px 取样；盒子要至少约 90% 宽、高度超过 10px、背景不透明。我们的顶栏是 `position: relative`，所以一直是模糊。
+- 改法：`body` 开头加一个空的 `div.ios-top-edge`：fixed 在顶端，12px 高，z-index 45（要在顶栏的 40 上面才会被取样到），背景色是 `var(--bg)`。它用 `background-clip: text`，所以什么都不画；`pointer-events: none`，不挡点击。
+- 只在 `@supports (-webkit-touch-callout: none)` 加 `@media (display-mode: standalone)` 下生效，也就是只在 iOS / iPadOS 的主屏幕 App 里出现。Safari 标签页、电脑、Android 都不受影响。设置弹窗在 top layer，打开时它的遮罩照样给状态栏上色。
+- `apple-mobile-web-app-status-bar-style` 一直是 `default`，不要改成 `black-translucent`：iOS 27 上它会把顶部 inset 变成 0，这个取色机制就失效了，模糊去不掉。另外 iOS 只在添加到主屏幕时读这个设置，改了也要重新添加才生效。
+- 验证：本地预览里确认了位置、层级、不挡点击、不画任何东西（改成品红色也看不到）；线上和本地文件逐字节一致。用户在 iPhone 上确认顶栏已经清晰（2026-11-27，从后台划掉 App 再打开，没有重新添加）。这台 Mac 没装 Xcode，没有 iOS 模拟器，iOS 专有的效果只能在真机上看。如果以后又糊了，备选方案是让顶栏 sticky。
+- 参考：FreshRSS PR #9382、Magpie issue #3515、ovis issue #164、zenn.dev/uakihir0/articles/260920-ios27-pwa-blur、WebKit bug 301756 / 301994 / 317153。
+
 ## 平台限制
 
 - **iOS / iPadOS**：需要 16.4 以上，并且必须先「添加到主屏幕」，在主屏幕打开的 App 里才能开启推送。
+- **iOS 26+ 主屏幕 App 顶部模糊**：页面顶端没有 fixed 或 sticky 的盒子时，系统会模糊状态栏下面约 40pt。现在靠 `div.ios-top-edge` 去掉（见第十一轮）；以后改顶栏或加顶部浮层时，别挡住或删掉它。
 - **Supabase free**：项目 7 天没有活动会被暂停。可以让 Worker cron 每天对 Supabase 做一次轻量查询，保持活跃。
 - **D1 Free**：每天最多读 500 万行、写 10 万行，UTC 0 点重置。超了以后所有读数据的查询都会失败，直到重置或升级 Workers Paid（$5/月）。D1 按扫描的行数计费，新查询要避免全表扫描（见第五轮）。
 - **Workers Free**：每次调用的 CPU 时间上限是 10ms。档位推送只需要算 1 次 + 发 N 条，用户少的时候没问题。订阅数到几百以后，改用 Queues 分批发送，或者升级到付费计划。
@@ -369,6 +381,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
 ## 回滚
 
 - **代码**：
+  - 第十一轮之前：`git checkout c34bf5a -- cloudflare/pages/index.html`
   - 第十轮之前：`git checkout 151e288 -- cloudflare/pages/index.html`
   - 第九轮之前：`git checkout 08ad130 -- cloudflare/pages/index.html`
   - 第八轮之前：`git checkout f917e35 -- cloudflare/pages/index.html`，再删掉 `cloudflare/pages/auth/`
@@ -379,6 +392,7 @@ cd cloudflare/worker && npx wrangler pages deploy ../pages --project-name poor-t
   - 改版前：`git checkout backup/pre-kiwiboard-2026-11-26 -- cloudflare/pages cloudflare/worker/src`
   - PWA 之前：`git checkout backup/pre-pwa-2026-11-26 -- cloudflare/pages`
 - **线上版本**：
+  - 第十一轮之前：Pages `5a8026f6`（只改了页面）。
   - 第十轮之前：Pages `5f57bc9d`（只改了 CSS）。
   - 第九轮之前：Pages `da6474c1`（只改了 CSS）。
   - 第八轮之前：Pages `7e4324fc`。只想停用新的登录方式的话，把 `DIRECT_ORIGIN` 改成 `""` 再部署就行。

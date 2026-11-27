@@ -186,6 +186,25 @@
 
       /* ═══════════════════ Header ═══════════════════ */
       .site-header { background: var(--bg); border-bottom: 1px solid var(--border); position: relative; z-index: 40; }
+      /* Installed iOS app (iOS 26+): unless a fixed or sticky box sits at
+         the top edge, iOS blurs the top ~40pt under the status bar, which
+         put the header's logo, name and buttons out of focus. With such a
+         box, iOS fills the status bar with its background colour and drops
+         the blur. WebKit samples 4px down at the top centre and wants a box
+         at least ~90% wide and over 10px tall, so this strip sits above the
+         header (z-index 40). It paints nothing (background-clip: text with
+         no text) and lets taps through. Dialogs open in the top layer, so
+         their backdrop still tints the status bar while they're open. */
+      .ios-top-edge { display: none; }
+      @supports (-webkit-touch-callout: none) {
+        @media (display-mode: standalone) {
+          .ios-top-edge {
+            display: block; position: fixed; top: 0; left: 0; right: 0; height: 12px; z-index: 45;
+            background-color: var(--bg); -webkit-background-clip: text; background-clip: text;
+            pointer-events: none;
+          }
+        }
+      }
       .hdr-inner {
         max-width: 1440px; margin: 0 auto;
         min-height: 88px;
@@ -1575,6 +1594,7 @@
     </style>
   </head>
   <body>
+    <div class="ios-top-edge" aria-hidden="true"></div>
     <header class="site-header">
       <div class="hdr-inner">
         <a class="brand" href="#prediction" id="brand-home-link" onclick="switchTab('prediction', true); return false;" title="kiwiboard: back to the Market Overview">
