@@ -5123,7 +5123,7 @@
             const meta = document.getElementById("sr-meta");
             if (meta) meta.innerHTML = rows.some(r => r.source === "scan") ? `List + <span class="sr-dot"></span>scan` : "Shared list";
             if (!rows.length) {
-              body.innerHTML = `<div class="tp-empty">Setups on the shared list are logged here and graded after each close.</div>`;
+              body.innerHTML = `<div class="tp-empty">Buy points land here after each close.</div>`;
               _wlSyncHeights();
               return;
             }

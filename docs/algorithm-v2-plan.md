@@ -353,7 +353,7 @@
 
 **第 4 步（可选）：更大范围的扫描**
 - 用 GitHub Actions 跑全市场扫描，或者把 cron 分片。
-- **状态（2026-11-28）**：选了 GitHub Actions，代码已完成并在本机测过，**还没上线**。
+- **状态（2026-11-28）**：选了 GitHub Actions。Worker 和 D1 已上线，页面在 Pages 预览上，正式站等你确认。
   - 扫描范围：`lib/sp500.ts` 的 S&P 500 成分股加 `lib/breadth.ts` 的 Nasdaq 100，去重后 518 只。
   - `cloudflare/scan/market-scan.ts`：用 esbuild 把 Worker 的 `computeMetrics`、`detectSetups`、`signalsFromMetrics`、`gradeSignal` 原样打包，规则只有一份。日线用 Worker 自己的 `fetchYahooOHLCV`（2 年），每次 4 个并发，间隔 150ms；遇到 429 全部暂停并加大间隔。本机实测 518 只用时 78 秒，没有遇到 429。
   - 市场压力和 SPY 半年涨幅从 D1 读，和 Worker 打分用的是同一份数据。
@@ -366,15 +366,21 @@
   - 页面：**Market Scan** 卡片放在 My Watchlist 下面，一行一只股票（Symbol、Setup、Buy、Stop、Risk、Score），点一行在上面的图表里打开。My Watchlist 的高度改成"右侧栏高度减去 Market Scan"，两栏仍然底部对齐，原来表格下面的空白也被填上了。手机上每只股票两行，先显示 3 只，其余点 "Show N more"。过期时标题右侧显示红色 "Scan stale"。
   - Signal Record：来自扫描的信号在代码后面加一个绿点，标题右侧写 "List + ● scan"。
   - 回放检验（本机，最近 60 个交易日，压力按 1 算）：平均每天 3.3 个候选，其中 Special Focus（≥4）1.03 个，和回测的每天 1.18 个一致。2026-11-24 到 11-27 这几天确实一个都没有。
-  - **上线需要**：
-    1. 线上 D1 执行一次（只加列和建表，旧数据不变）：
-       ```sql
-       ALTER TABLE signal_log ADD COLUMN source TEXT NOT NULL DEFAULT 'list';
-       CREATE TABLE IF NOT EXISTS market_scan (scan_date TEXT NOT NULL, symbol TEXT NOT NULL, focus_score INTEGER NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (scan_date, symbol));
-       ```
-    2. 部署 Worker（新的 `/api/market-scan`，`*/30` 跳过 `scan` 的信号），再部署 Pages。
-    3. 在 Cloudflare 建一个 API token，权限只给 Account · D1 · Edit；在 GitHub 仓库 Settings → Secrets and variables → Actions 里加 `CLOUDFLARE_D1_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。
-    4. 把 workflow 推到 GitHub 的 main（定时任务只在默认分支上跑），在 Actions 页面手动跑一次。
+  - **上线情况（约 15:20 UTC）**：
+    - 部署前的工作区已备份到分支 `backup/pre-market-scan-2026-11-28`。
+    - 线上 D1 已执行（只加列和建表，旧数据不变）：
+      ```sql
+      ALTER TABLE signal_log ADD COLUMN source TEXT NOT NULL DEFAULT 'list';
+      CREATE TABLE IF NOT EXISTS market_scan (scan_date TEXT NOT NULL, symbol TEXT NOT NULL, focus_score INTEGER NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (scan_date, symbol));
+      ```
+    - Worker `a3ee59e3` 已上线（回滚 `15d3b791`）：新的 `/api/market-scan`，`*/30` 跳过 `scan` 的信号。
+    - 第一次扫描在本机跑（11-27 收盘：518 只，0 个候选），结果用 wrangler 写进线上 D1。
+    - Pages 预览：`https://market-scan.poor-trader-dashboard.pages.dev`（部署 `87ad4845`，包含第 12 轮还没提交的改动）。正式站仍是 `78aed2d4`。
+    - Signal Record 空的时候改为一行字 "Buy points land here after each close."（原来那句在桌面上会折成两行，也只提到共享自选股）。
+  - **还差**：
+    1. 在 Cloudflare 建一个 API token，权限只给 Account · D1 · Edit；在 GitHub 仓库 Settings → Secrets and variables → Actions 里加 `CLOUDFLARE_D1_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。
+    2. 在 Actions 页面手动跑一次（不加 secret 时可以先勾 dry run，只扫描不写库）。
+    3. 你确认预览后，正式部署 Pages。
   - **注意**：公开仓库 60 天没有提交，GitHub 会自动停用定时任务，页面会显示 "Scan stale"，到 Actions → Market scan 里点 Enable workflow 即可。GitHub 的共享 IP 也可能被 Yahoo 限流，第一次运行后要看一下日志。
   - 顺带发现：`patterns.ts` 的 `detectAscTriangle` 在一只股票正好有 100 根日线时会报错（`n < span` 应为 `n <= span`，此时从下标 −1 开始取数）。新上市的股票（如 FDXF、SPCX、HONA）会在第 100 个交易日碰到。扫描对每只股票单独捕获错误，所以不影响其他股票；规则代码这次没改。
 
