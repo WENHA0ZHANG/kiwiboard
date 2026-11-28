@@ -61,3 +61,34 @@ CREATE TABLE IF NOT EXISTS watchlist_metrics (
   focus_score INTEGER NOT NULL DEFAULT 0,
   computed_at TEXT NOT NULL
 );
+
+-- ── Signal log (Watchlist v2) ────────────────────────────────────────────────
+-- One row per setup or Special Focus base flagged on the shared watchlist,
+-- graded by the cron from daily bars (worker/src/lib/signal-log.ts). R values
+-- are multiples of the entry-to-stop risk: r_plan uses the +3R / −1R / 30-day
+-- exit, r_trend the breakeven-at-+2R / close-below-21-EMA exit.
+CREATE TABLE IF NOT EXISTS signal_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL,
+  setup TEXT NOT NULL,          -- EP | TIGHT_PB | PB21 | BASE
+  label TEXT NOT NULL,
+  signal_date TEXT NOT NULL,    -- the finished bar the setup formed on
+  entry_type TEXT NOT NULL,     -- close | stop
+  trigger REAL NOT NULL,
+  stop REAL NOT NULL,
+  window INTEGER NOT NULL,      -- sessions the buy-stop stays valid
+  status TEXT NOT NULL,         -- pending | missed | open | closed
+  entry_date TEXT,
+  entry REAL,
+  exit_date TEXT,
+  r_plan REAL,
+  r_trend REAL,
+  r_now REAL,
+  max_r REAL,
+  stress INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (symbol, setup, signal_date)
+);
+CREATE INDEX IF NOT EXISTS idx_signal_log_status ON signal_log(status, symbol);
+CREATE INDEX IF NOT EXISTS idx_signal_log_signal_date ON signal_log(signal_date);

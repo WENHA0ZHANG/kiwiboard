@@ -63,6 +63,47 @@ export interface MarketRegime {
   yc_recently_inverted: boolean;
 }
 
+// ── Regime v2 (shadow mode) ─────────────────────────────────────────────────
+// Same buy side as v1 minus the greed-level risk tiers; the risk side scores
+// stress building instead (docs/algorithm-v2-plan.md, section 2.7).
+export interface StressInput {
+  id: "rates" | "move" | "hy_widening" | "nfci" | "skew" | "narrow";
+  title: string;
+  value: number | null;        // the reading the rule looks at
+  unit: string;
+  detail: string;              // e.g. "real +0.48 / 10Y +0.50 pp in 20 days"
+  as_of: string | null;
+  tier: number;                // 0, 1 or 2
+  weight: number;
+  points: number;              // ≤ 0, after the bottom-guard halving
+  reason: string;
+  counts: boolean;             // part of the stress count (all but "narrow")
+  stale?: boolean;             // reading too old, not scored
+  missing?: boolean;           // not enough history yet
+}
+
+export interface MarketRegimeV2 {
+  version: 2;
+  score: number;
+  label: string;
+  css_class: string;
+  buy_points: number;
+  risk_points: number;         // level-based risk kept from v1 (valuation, sentiment greed, curve)
+  stress_points: number;       // after halving
+  stress_raw: number;
+  stress_halved: boolean;      // buy points ≥ 4.5: stress counts half
+  stress_count: number;        // stress inputs firing (rates, MOVE, HY, NFCI, SKEW)
+  summary: string;
+  contributions: RegimeContribution[];
+  stress: StressInput[];
+  computed_at: string;
+}
+
+export const STRESS_SERIES_IDS = [
+  "real_yield_10y", "ust_10y", "us_high_yield_spread", "nfci",
+  "move_index", "cboe_skew", "sp500_above_50d_ma", "sp500_off_high",
+] as const;
+
 export const ALL_INDICATOR_IDS = [
   "cnn_fear_greed_index",
   "cnn_put_call_options",

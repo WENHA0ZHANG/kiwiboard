@@ -1,5 +1,6 @@
 import type { Observation } from "./types";
 import { fetchYahooSpark } from "./yahoo";
+import { SP500_MEMBERS } from "./sp500";
 
 // ── Nasdaq 100 % above the 20-day moving average, computed from Yahoo ───────
 // Barchart's $NDTW page stopped answering scripts (HTTP 202, empty body) in
@@ -78,6 +79,40 @@ export async function fetchNdxBreadth(): Promise<Observation[]> {
     source: "Yahoo (computed)",
     meta_json: JSON.stringify({
       method: `% of Nasdaq-100 members closing above their ${SMA_DAYS}-day SMA`,
+      members: d.members,
+    }),
+    inserted_at: insertedAt,
+  }));
+}
+
+// ── S&P 500 % above the 50-day moving average (regime v2) ───────────────────
+// Read by the "narrow market" rule: the index within 2% of its high while
+// fewer than 55% of its members are above their 50-day average. Three months
+// of closes give a full 50-day window for the last ~14 sessions. This is the
+// heaviest after-close task (26 requests, about 1 MB of JSON), so it runs in
+// a cron invocation of its own.
+const SPX_SMA_DAYS = 50;
+const SPX_MIN_MEMBERS = 450;   // of 503; a failed batch or two still counts
+const SPX_KEEP_DAYS = 10;
+
+export async function fetchSp500Breadth(): Promise<Observation[]> {
+  const series = await fetchYahooSpark(SP500_MEMBERS, "3mo", "1d");   // 26 requests
+  const closes = new Map<string, Closes>();
+  for (const [symbol, points] of series) closes.set(symbol, new Map(points.map((p) => [p.date, p.close])));
+  const days = percentAboveSma(closes, SPX_SMA_DAYS, SPX_MIN_MEMBERS).slice(-SPX_KEEP_DAYS);
+  if (!days.length) {
+    console.error(`fetchSp500Breadth: no usable days (${closes.size} of ${SP500_MEMBERS.length} members returned)`);
+    return [];
+  }
+  const insertedAt = new Date().toISOString().slice(0, 10);
+  return days.map((d) => ({
+    indicator_id: "sp500_above_50d_ma",
+    as_of: d.date,
+    value: d.pct,
+    unit: "percent",
+    source: "Yahoo (computed)",
+    meta_json: JSON.stringify({
+      method: `% of S&P 500 members closing above their ${SPX_SMA_DAYS}-day SMA`,
       members: d.members,
     }),
     inserted_at: insertedAt,

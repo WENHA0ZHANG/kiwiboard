@@ -121,12 +121,24 @@ with the live score, its band and the buy and risk points; and the
 contribution of each indicator.
 
 ### Watchlist
-- **Today's Special Focus** flags stocks with volume surges and setups such as
-  bull flags, high tight flags and cup-and-handle bases.
+- **Today's Special Focus** ranks the stocks with a daily setup or a base that
+  held an edge in a 2018–2026 backtest of ~600 liquid US stocks: an EP gap
+  (8%+ gap on 3× volume that holds), a tight pullback after a fast run, a
+  quiet pullback to the rising 21-day EMA, and daily high tight flag, cup and
+  cup-and-handle bases near their pivot. Volume surges, trend and relative
+  strength show as tags but add no points (they only helped in hindsight).
+- **Trade Plan** lists the next session's setups with the buy price, the stop
+  and a share count for the risk you set. Your account size stays in your
+  browser. When two or more regime v2 stress inputs fire, pullback setups are
+  paused (they lost money in stressed markets).
+- **Signal Record** logs every setup on the shared watchlist and grades it
+  after each close, with the backtest's two exits (+3R target, or a 21 EMA
+  trail): a live record with no survivorship bias.
 - **Stock detail:** day range, ADR, ATR, RSI, relative volume and dollar
-  volume; a trade plan with a stop, +3R and +5R targets and a pivot; and a
-  chart with EMA 8/21/50, volume and detected bases, from 30-minute to weekly
-  bars.
+  volume; a trade plan with the entry, a structural stop (the signal day's
+  low, or the pivot less one ATR, at most 7–8% away), +2R / +3R / +5R levels
+  and hints if you already hold it; and a chart with EMA 8/21/50, volume and
+  detected bases, from 30-minute to weekly bars.
 - **Market Timing** checks SPY, QQQ and DIA against their 8/21/50-day EMAs
   (risk-on or risk-off).
 - Drag rows to reorder, and add stocks by ticker or company name.
@@ -145,9 +157,9 @@ news; the chart opens on Bitcoin. On a computer the lists and the chart sit
 side by side, each half the width.
 
 ### Signals
-How the regime score is built, the bull / bear rule for every indicator and
-whether it is firing now, and the readings at every major US equity top and
-bottom since 2000.
+How the regime score is built, the **regime v2** score being tested beside
+it, the bull / bear rule for every indicator and whether it is firing now,
+and the readings at every major US equity top and bottom since 2000.
 
 ## Tracked Indicators
 
@@ -165,8 +177,9 @@ bottom since 2000.
 | **10Y–2Y Treasury Yield Curve** | Late-cycle / Fed-easing detection. |
 
 All values come from public sources (FRED, Yahoo Finance, CNN dataviz,
-multpl, WorldPERatio). Nasdaq 100 breadth is computed from the members' daily
-closes after each US close. Each reading is timestamped, stored in D1, and
+multpl, WorldPERatio). Nasdaq 100 and S&P 500 breadth are computed from the
+members' daily closes after each US close. Regime v2 also reads the real and
+nominal 10-year yields and the NFCI (FRED) and the MOVE index (Yahoo). Each reading is timestamped, stored in D1, and
 drawn on the front end with its top and bottom threshold lines. A reading
 that stops updating is marked stale and left out of the score.
 
@@ -221,6 +234,30 @@ negative contributions push toward a **top / risk** bias.
 
 The regime card shows the active band, the buy and risk points, and which
 indicators drove each side.
+
+### Regime v2 (testing)
+
+Backtests from 1990 to 2026 showed the live score is good at bottoms but
+blind at tops: greed-level readings (VIX below 14, RSI above 70, breadth above
+80%, tight credit spreads) came *before* calmer markets, not drawdowns. What
+did lead drawdowns was stress building. v2 keeps the buy side, drops those
+greed-level risk tiers and scores six stress inputs instead:
+
+| Input | 1st / 2nd tier | Weight |
+|---|---|---|
+| Rate shock | Real 10Y +0.25 / +0.40 pp, or 10Y +0.40 / +0.60 pp, in 20 days | 1.0 |
+| MOVE (bond volatility) | ≥ 110 / ≥ 130 | 1.0 |
+| HY widening | +40 / +75 bp in 20 days, or +60 / +100 bp over the 60-day low | 1.5 |
+| NFCI (financial conditions) | +0.05 / +0.10 in 4 weeks | 1.0 |
+| CBOE SKEW | ≥ 150 / ≥ 160 | 0.8 |
+| Narrow market | S&P 500 within 2% of its high, under 55% of members above the 50-day MA | 1.0 |
+
+Stress counts half when the buy side reaches 4.5, so a panic low still reads
+as a buy. Replayed on 2026, v2 read **Risk (−5.2)** on 2026-10-02, a week
+before the October top, where the live score read Neutral. It runs beside
+the live score for a few weeks; alerts follow the live score until it
+replaces it. Details and the backtests: `docs/algorithm-v2-plan.md` and
+`research/backtest/`.
 
 ## Platform
 
@@ -323,8 +360,16 @@ Defined in `cloudflare/worker/wrangler.toml`:
 
 ```toml
 [triggers]
-crons = ["*/30 * * * *"]   # every 30 minutes
+crons = ["*/30 * * * *", "10 21,22,23 * * 1-5"]
 ```
+
+- **Every 30 minutes:** indicators, market rows, the shared watchlist (and
+  its signal log) and the regime v2 snapshot. Each run logs its outbound
+  requests against the free plan's 50.
+- **After the US close (21:10, 22:10, 23:10 UTC, weekdays):** regime v2
+  stress inputs every run; Nasdaq 100 breadth at the first run and S&P 500
+  breadth at the second (each is heavy, so they run apart), with the third
+  run retrying whichever failed.
 
 ## API
 
@@ -332,7 +377,8 @@ crons = ["*/30 * * * *"]   # every 30 minutes
 |---|---|
 | `GET /api/latest` | Latest value per indicator with top/bottom flags. |
 | `GET /api/alerts` | Bull/bear rule result per indicator. |
-| `GET /api/regime` | Poor2Rich score, band and per-indicator contributions. |
+| `GET /api/regime` | Poor2Rich score, band and per-indicator contributions, plus `v2` (the score under test, with its stress inputs). |
+| `GET /api/signal-log` | The last 20 setups logged from the shared watchlist, graded, with their record. |
 | `GET /api/indicator-history?indicator_id=…&days=…` | History of one indicator. |
 | `GET /api/market-overview?symbols=AAPL,MSFT&assets=ETH-USD,CL=F` | Latest close plus 1W/1M/3M/1Y for indices, futures, crypto and stocks. |
 | `GET /api/market-news` | General market headlines (Finnhub, with Yahoo Finance as a fallback). |

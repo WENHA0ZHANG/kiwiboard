@@ -85,6 +85,7 @@ async function fetchFredSeries(
   seriesId: string,
   fredApiKey: string | undefined,
   sinceDays = 90,
+  apiLimit = 15,
 ): Promise<Array<{ date: string; value: string }>> {
   const cosd = new Date(Date.now() - sinceDays * 86400 * 1000)
     .toISOString()
@@ -127,7 +128,7 @@ async function fetchFredSeries(
     apiUrl.searchParams.set("series_id", seriesId);
     apiUrl.searchParams.set("api_key", fredApiKey);
     apiUrl.searchParams.set("file_type", "json");
-    apiUrl.searchParams.set("limit", "15");
+    apiUrl.searchParams.set("limit", String(apiLimit));
     apiUrl.searchParams.set("sort_order", "desc");
     try {
       const resp = await fetch(apiUrl.toString(), {
@@ -192,6 +193,81 @@ export async function fetchHyOas(fredApiKey?: string): Promise<Observation[]> {
 export async function fetchYieldCurve(fredApiKey?: string): Promise<Observation[]> {
   const rows = await fetchFredSeries("T10Y2Y", fredApiKey);
   return toFredObservations(rows, "yc_10y_2y", "percent", "FRED:T10Y2Y", 1);
+}
+
+// ── Regime v2 stress inputs (after-close cron) ─────────────────────────────
+// The v2 risk side scores how fast stress is building: 20-day moves in the
+// real and nominal 10-year yields, the MOVE bond-volatility index, 4-week
+// moves in the Chicago Fed's NFCI and how close the S&P 500 is to its high.
+// Each FRED series keeps enough history in D1 for a 20-row change, so these
+// fetch ~100 rows on the first run and simply refresh them afterwards.
+export async function fetchRealYield10y(fredApiKey?: string): Promise<Observation[]> {
+  const rows = await fetchFredSeries("DFII10", fredApiKey, 150, 100);
+  return toFredObservations(rows, "real_yield_10y", "percent", "FRED:DFII10", 1);
+}
+
+export async function fetchTreasury10y(fredApiKey?: string): Promise<Observation[]> {
+  const rows = await fetchFredSeries("DGS10", fredApiKey, 150, 100);
+  return toFredObservations(rows, "ust_10y", "percent", "FRED:DGS10", 1);
+}
+
+/** Weekly (week ending Friday), published the following Wednesday. */
+export async function fetchNfci(fredApiKey?: string): Promise<Observation[]> {
+  const rows = await fetchFredSeries("NFCI", fredApiKey, 220, 30);
+  return toFredObservations(rows, "nfci", "index", "FRED:NFCI", 1);
+}
+
+/** MOVE index closes, and how far the S&P 500 sits below its 252-day closing high. */
+export async function fetchMoveAndSpxHigh(): Promise<Observation[]> {
+  const series = await fetchYahooSpark(["^MOVE", "^GSPC"], "1y", "1d");   // 1 request
+  const insertedAt = today();
+  const out: Observation[] = [];
+  for (const p of (series.get("^MOVE") ?? []).slice(-5)) {
+    out.push({
+      indicator_id: "move_index", as_of: p.date, value: p.close, unit: "index",
+      source: "Yahoo:^MOVE", meta_json: null, inserted_at: insertedAt,
+    });
+  }
+  const spx = series.get("^GSPC") ?? [];
+  if (spx.length >= 200) {
+    for (let i = Math.max(0, spx.length - 5); i < spx.length; i++) {
+      const window = spx.slice(Math.max(0, i - 251), i + 1);
+      const high = Math.max(...window.map((p) => p.close));
+      out.push({
+        indicator_id: "sp500_off_high", as_of: spx[i].date,
+        value: Math.round((spx[i].close / high - 1) * 10000) / 100, unit: "percent",
+        source: "Yahoo:^GSPC (computed)",
+        // The 6-month change feeds the watchlist's relative-strength tag.
+        meta_json: JSON.stringify({
+          close: spx[i].close, high_252d: high,
+          chg_6m_pct: i >= 126 ? Math.round((spx[i].close / spx[i - 126].close - 1) * 10000) / 100 : null,
+        }),
+        inserted_at: insertedAt,
+      });
+    }
+  }
+  return out;
+}
+
+export async function fetchStressInputs(
+  env: { FRED_API_KEY?: string },
+): Promise<{ ok: string[]; err: string[]; observations: Observation[] }> {
+  const tasks: Array<[string, () => Promise<Observation[]>]> = [
+    ["dfii10", () => fetchRealYield10y(env.FRED_API_KEY)],
+    ["dgs10", () => fetchTreasury10y(env.FRED_API_KEY)],
+    ["nfci", () => fetchNfci(env.FRED_API_KEY)],
+    ["move_spx", fetchMoveAndSpxHigh],
+  ];
+  const ok: string[] = [];
+  const err: string[] = [];
+  const observations: Observation[] = [];
+  const settled = await Promise.allSettled(tasks.map(([, fn]) => fn()));
+  settled.forEach((r, i) => {
+    const name = tasks[i][0];
+    if (r.status === "fulfilled" && r.value.length) { observations.push(...r.value); ok.push(`${name}:${r.value.length}`); }
+    else err.push(`${name}:${r.status === "rejected" ? String(r.reason) : "empty"}`);
+  });
+  return { ok, err, observations };
 }
 
 // ── S&P 500 RSI from Yahoo Finance ──────────────────────────────────────────

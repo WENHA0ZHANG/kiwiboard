@@ -51,6 +51,31 @@ export async function getRecentObservations(
   return rows.results;
 }
 
+/**
+ * Recent history for several indicators in one query, oldest first per id.
+ * Uses the (indicator_id, as_of) primary key, so D1 reads only the rows
+ * returned (about 300 for the regime v2 inputs over 120 days).
+ */
+export async function getSeriesSince(
+  db: D1Database,
+  ids: readonly string[],
+  days: number,
+): Promise<Record<string, Array<{ as_of: string; value: number; unit: string }>>> {
+  const out: Record<string, Array<{ as_of: string; value: number; unit: string }>> = {};
+  if (!ids.length) return out;
+  const cutoff = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
+  const rows = await db
+    .prepare(
+      `SELECT indicator_id, as_of, value, unit FROM observations
+       WHERE indicator_id IN (${ids.map(() => "?").join(",")}) AND as_of >= ?
+       ORDER BY indicator_id, as_of`,
+    )
+    .bind(...ids, cutoff)
+    .all<{ indicator_id: string; as_of: string; value: number; unit: string }>();
+  for (const r of rows.results) (out[r.indicator_id] ??= []).push({ as_of: r.as_of, value: r.value, unit: r.unit });
+  return out;
+}
+
 export async function upsertObservations(
   db: D1Database,
   observations: Observation[],

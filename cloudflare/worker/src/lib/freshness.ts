@@ -17,6 +17,13 @@ export const MAX_AGE_DAYS: Record<string, number> = {
   yc_10y_2y: 7,
   sp500_pe_ratio: 10,
   nasdaq100_pe_ratio: 10,
+  // Regime v2 stress inputs.
+  real_yield_10y: 7,
+  ust_10y: 7,
+  move_index: 6,
+  sp500_above_50d_ma: 6,
+  sp500_off_high: 6,
+  nfci: 14,                  // weekly, posted the Wednesday after the week ends
 };
 const DEFAULT_MAX_AGE_DAYS = 7;
 

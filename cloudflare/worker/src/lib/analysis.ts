@@ -1,11 +1,14 @@
 import type { YahooBar } from "./yahoo";
 import { ema, r2 } from "./indicators";
-import { EMPTY_PATTERN, PATTERN_CODES, detectPatterns, patternRank } from "./patterns";
+import { EMPTY_PATTERN, PATTERN_CODES, detectPatterns } from "./patterns";
 import type { PatternResult } from "./patterns";
+import { detectSetups } from "./setups";
+import type { Setup } from "./setups";
 
 export { ema };
 export { toWeekly } from "./patterns";
 export type { PatternResult } from "./patterns";
+export type { Setup } from "./setups";
 
 // ── Generic indicator helpers ────────────────────────────────────────────────
 
@@ -92,18 +95,49 @@ export interface WatchMetrics {
   pattern_tf: "daily" | "weekly" | null;
   pattern_matches: PatternResult[];
   pivot: number | null;
+  // Trade plan. `entry` is the setup trigger, the base's pivot, or (with
+  // neither) today's price; the stop is structural (signal-day low, or the
+  // pivot less one ATR), at most 7–8% under the entry.
+  plan_kind: "setup" | "breakout" | "generic" | null;
+  plan_label: string | null;
+  entry: number | null;
   stop: number | null;
   stop_pct: number | null;
   risk: number | null;
-  tp1: number | null;
-  tp2: number | null;
+  tp_2r: number | null;   // +2R: move the stop to breakeven
+  tp1: number | null;     // +3R
+  tp2: number | null;     // +5R
+  setups: Setup[];
+  hold_hints: string[];   // if you already hold it: TRIM_8, EXIT_21, NO_ADD
+  rs_6m: number | null;   // 6-month change minus SPY's, in points
+  stress: number | null;  // regime v2 stress count used for this score
   focus_score: number;
   focus_reasons: string[];
   pattern: PatternResult;
   ok: boolean;
 }
 
-export function computeMetrics(symbol: string, bars: YahooBar[]): WatchMetrics {
+export interface MetricsContext {
+  /** False while today's session is still trading (the last bar is partial). */
+  lastBarComplete?: boolean;
+  /** Regime v2 stress count; at 2 or more pullback setups don't score. */
+  stress?: number | null;
+  /** SPY's 6-month change in %, for the relative-strength tag. */
+  spy6m?: number | null;
+}
+
+// Special Focus weights, from the 2018–2026 backtest on ~600 liquid stocks
+// (docs/algorithm-v2-plan.md, section 3). Setups and the few bases that kept
+// an edge score; everything else is shown as a tag but adds nothing.
+// Volume surges are tags only: they helped only in hindsight (the day's full
+// volume isn't known when the pivot trades).
+const SETUP_POINTS: Record<string, number> = { EP: 5, TIGHT_PB: 4, PB21: 3 };
+const BASE_POINTS: Record<string, number> = {
+  HTF: 4, CUP: 3, CUP_HANDLE: 3, BULL_FLAG: 1, BULL_FLAG_W: 2, PENNANT_W: 2,
+};
+export const FOCUS_MIN = 4;
+
+export function computeMetrics(symbol: string, bars: YahooBar[], ctx: MetricsContext = {}): WatchMetrics {
   const base: WatchMetrics = {
     symbol,
     price: null, as_of: null,
@@ -113,7 +147,9 @@ export function computeMetrics(symbol: string, bars: YahooBar[]): WatchMetrics {
     vol_today: null, vol_avg_1m: null, vol_ratio: null, vol_doubled: false,
     hve: false, extended: false, dollar_vol: null,
     pattern_label: null, pattern_labels: [], pattern_tf: null, pattern_matches: [], pivot: null,
-    stop: null, stop_pct: null, risk: null, tp1: null, tp2: null,
+    plan_kind: null, plan_label: null, entry: null,
+    stop: null, stop_pct: null, risk: null, tp_2r: null, tp1: null, tp2: null,
+    setups: [], hold_hints: [], rs_6m: null, stress: ctx.stress ?? null,
     focus_score: 0, focus_reasons: [],
     pattern: { ...EMPTY_PATTERN },
     ok: false,
@@ -174,39 +210,87 @@ export function computeMetrics(symbol: string, bars: YahooBar[]): WatchMetrics {
   base.pattern_tf = pat.timeframe;
   base.pivot = pat.pivot;
 
-  // Suggested swing levels — stop distance is the smaller of ADR%, ATR%
-  // and 7% (generic risk sizing); targets are simple R-multiples.
-  const candidates = [7];
-  if (base.adr_pct != null && base.adr_pct > 0) candidates.push(base.adr_pct);
-  if (base.atr_pct != null && base.atr_pct > 0) candidates.push(base.atr_pct);
-  const stopPct = Math.min(...candidates);
-  if (price > 0 && stopPct > 0) {
-    const stop = price * (1 - stopPct / 100);
-    const riskAmt = price - stop;
+  if (ctx.spy6m != null && base.chg_6m_pct != null) base.rs_6m = r2(base.chg_6m_pct - ctx.spy6m);
+
+  // ── Setups and the trade plan ─────────────────────────────────────────────
+  const lastBarComplete = ctx.lastBarComplete ?? true;
+  base.setups = detectSetups(bars, { lastBarComplete, stress: ctx.stress });
+  const scoringSetups = base.setups.filter((x) => !(x.code === "PB21" && x.stress_warning));
+  const lead = [...scoringSetups, ...base.setups]
+    .sort((x, y) => (SETUP_POINTS[y.code] ?? 0) - (SETUP_POINTS[x.code] ?? 0))[0];
+
+  // A base still to break out: price under the pivot, pivot within 10%.
+  const inReach = (p: PatternResult) => p.pivot != null && price < p.pivot && p.pivot <= price * 1.10;
+  const baseCode = (p: PatternResult) =>
+    p.kind ? PATTERN_CODES[p.kind] + (p.timeframe === "weekly" ? "_W" : "") : "";
+  const bases = matches.filter(inReach).sort((x, y) => (BASE_POINTS[baseCode(y)] ?? 0) - (BASE_POINTS[baseCode(x)] ?? 0));
+  const leadBase = bases[0] ?? null;
+
+  let entry: number | null = null;
+  let stop: number | null = null;
+  if (lead) {
+    base.plan_kind = "setup";
+    base.plan_label = lead.label;
+    entry = lead.entry_type === "close" ? price : lead.trigger;
+    stop = lead.stop;
+  } else if (leadBase && leadBase.pivot != null) {
+    base.plan_kind = "breakout";
+    base.plan_label = `${leadBase.label} breakout`;
+    entry = leadBase.pivot;
+    stop = Math.max(entry - (a ?? entry * 0.07), entry * 0.93);
+  } else if (price > 0) {
+    // No setup or base: generic levels from today's price, as before.
+    const candidates = [7];
+    if (base.adr_pct != null && base.adr_pct > 0) candidates.push(base.adr_pct);
+    if (base.atr_pct != null && base.atr_pct > 0) candidates.push(base.atr_pct);
+    base.plan_kind = "generic";
+    base.plan_label = "No setup";
+    entry = price;
+    stop = price * (1 - Math.min(...candidates) / 100);
+  }
+  if (entry != null && stop != null && stop < entry) {
+    const riskAmt = entry - stop;
+    base.entry = r2(entry);
     base.stop = r2(stop);
-    base.stop_pct = r2(stopPct);
+    base.stop_pct = r2((riskAmt / entry) * 100);
     base.risk = r2(riskAmt);
-    base.tp1 = r2(price + 3 * riskAmt);
-    base.tp2 = r2(price + 5 * riskAmt);
+    base.tp_2r = r2(entry + 2 * riskAmt);
+    base.tp1 = r2(entry + 3 * riskAmt);
+    base.tp2 = r2(entry + 5 * riskAmt);
   }
 
+  // If you already hold it: first close under the 8 / 21 EMA, or extended.
+  const prevClose = closes[n - 2];
+  if (prevClose != null && n >= 3) {
+    if (price < e8[n - 1] && prevClose >= e8[n - 2]) base.hold_hints.push("TRIM_8");
+    if (price < e21[n - 1] && (prevClose >= e21[n - 2] || closes[n - 3] >= e21[n - 3])) base.hold_hints.push("EXIT_21");
+  }
+  if (base.extended) base.hold_hints.push("NO_ADD");
+
+  // ── Special Focus score ───────────────────────────────────────────────────
   let score = 0;
   const reasons: string[] = [];
-  if (base.vol_doubled) { score += 4; reasons.push("VOL_DOUBLED"); }
-  else if ((base.vol_ratio ?? 0) >= 1.5) { score += 2; reasons.push("VOL_SURGE"); }
-  if (base.hve) { score += 3; reasons.push("HVE"); }
-  // The headline pattern carries its full weight; each extra base (e.g. the
-  // same name also basing on the weekly chart) adds a point of confluence.
-  matches.forEach((p, i) => {
-    if (!p.kind) return;
-    const code = PATTERN_CODES[p.kind];
-    reasons.push(p.timeframe === "weekly" ? `${code}_W` : code);
-    score += i === 0 ? patternRank(p) - (p.timeframe === "daily" ? 1 : 0) : 1;
-  });
-  if ((base.chg_1m_pct ?? 0) >= 30) { score += 1; reasons.push("STRONG_1M"); }
+  for (const x of base.setups) {
+    if (!reasons.includes(x.code)) reasons.push(x.code);
+    if (x.stress_warning && !reasons.includes("STRESS")) reasons.push("STRESS");
+    if (x.code === "PB21" && x.stress_warning) continue;   // lost money under stress
+    score += x === lead ? (SETUP_POINTS[x.code] ?? 0) : 1;
+  }
+  if (leadBase) score += BASE_POINTS[baseCode(leadBase)] ?? 0;
+  for (const p of matches) {
+    const code = baseCode(p);
+    if (code && !reasons.includes(code)) reasons.push(code);
+  }
+  if (score > 0 && (base.adr_pct ?? 0) >= 4) { score += 1; reasons.push("ADR4"); }
+  // Tags only (no points): volume, trend, relative strength, extension.
+  if (base.vol_doubled) reasons.push("VOL_DOUBLED");
+  else if ((base.vol_ratio ?? 0) >= 1.5) reasons.push("VOL_SURGE");
+  if (base.hve) reasons.push("HVE");
+  if ((base.rs_6m ?? -Infinity) >= 10) reasons.push("RS_LEAD");
+  if ((base.chg_1m_pct ?? 0) >= 30) reasons.push("STRONG_1M");
   if (base.ema8 != null && base.ema21 != null && base.ema50 != null &&
-      base.ema8 > base.ema21 && base.ema21 > base.ema50) { score += 1; reasons.push("TREND_UP"); }
-  if (base.extended) { reasons.push("EXTENDED"); }
+      base.ema8 > base.ema21 && base.ema21 > base.ema50) reasons.push("TREND_UP");
+  if (base.extended) reasons.push("EXTENDED");
   base.focus_score = score;
   base.focus_reasons = reasons;
 

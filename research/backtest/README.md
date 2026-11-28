@@ -65,6 +65,20 @@ for k in 0 1 2 3 4 5 6 7; do node research/backtest/walk.cjs research/backtest/w
 - `bt_setups.py`：EP、急跌回踩窄幅 K 线、EMA21 回踩、UnR 这几种买点。
 - `bt_warnings.py`：警示信号之后的收益。
 
+统计时只用流动性达标、止损距离 ≥ 1% 的交易：2018 年 FERG 有一笔止损只有 0.01% 的坏数据，单笔就记了 +492R（见计划文档 3.0 节）。
+
+**Watchlist v2 验收**（Special Focus 新打分，每只股票用它自己的买入规则）。`walk.cjs` 读环境变量 `KB_STRESS`，按日期回放当天的市场压力：
+
+```bash
+python3 research/backtest/stress_json.py        # 生成 work/stress.json（需要先跑 risk_study2.py）
+cloudflare/worker/node_modules/.bin/esbuild cloudflare/worker/src/lib/analysis.ts --bundle --platform=node --format=cjs --outfile=research/backtest/work/bt/analysis_v2.cjs
+mkdir -p research/backtest/work/bt/v2
+for k in 0 1 2 3 4 5 6 7; do KB_ANALYSIS=research/backtest/work/bt/analysis_v2.cjs KB_STRESS=research/backtest/work/stress.json node research/backtest/walk.cjs research/backtest/work/data/stocks research/backtest/work/bt/v2/sig_$k.jsonl $k 8 & done; wait
+python3 research/backtest/bt_focus_v2.py
+```
+
+`bt_focus_v2.py` 按门槛 3、4、5 分别汇总：每天的名单数和交易数、计划型和趋势型的平均 R、两个年段和每年的结果。
+
 ## 注意
 
 - 股票池是现在的成分股，有幸存者偏差，所以绝对胜率偏高，只能用来比较不同规则。

@@ -1010,7 +1010,7 @@
       .wl-key-metrics .kv .kv-sub { margin-top: 1px; font-size: 12px; color: var(--muted); }
       .wl-plan-banner {
         margin: 10px 26px 0; padding: 12px 14px;
-        display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 14px;
         background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
         font-size: 14px;
       }
@@ -1020,6 +1020,74 @@
       .wl-plan-banner .pb-cell.stop .pb-value { color: var(--bear); }
       .wl-plan-banner .pb-cell.tp1 .pb-value,
       .wl-plan-banner .pb-cell.tp2 .pb-value { color: var(--bull); }
+      .wl-plan-banner .pb-cell { min-width: 0; }
+      .wl-plan-banner .pb-cell :is(.pb-label, .kv-sub) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .wl-plan-banner .pb-foot {
+        grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid var(--border);
+        font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .wl-plan-banner .pb-foot b { color: var(--text); font-weight: 600; }
+      .wl-plan-banner .pb-foot .pb-warn { color: var(--bear); }
+
+      /* Trade Plan (next session) and Signal Record cards in the side column. */
+      .tp-list { display: grid; gap: 8px; padding: 2px 22px 16px; }
+      .tp-row {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 10px;
+        padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+        cursor: pointer;
+      }
+      .tp-row:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+      .tp-row.is-muted { opacity: 0.6; }
+      .tp-row .tp-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .tp-row .tp-sym { font-size: 15px; font-weight: 700; color: var(--text-strong); }
+      .tp-row .tp-setup { margin-left: 8px; font-size: 13px; color: var(--muted); }
+      .tp-row .tp-levels {
+        grid-column: 1 / -1; display: flex; gap: 14px; font-size: 13px; color: var(--muted);
+        white-space: nowrap; overflow: hidden;
+      }
+      .tp-row .tp-levels b { color: var(--text-strong); font-weight: 600; }
+      .tp-state {
+        padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+        font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+        color: var(--muted); background: var(--neutral-soft);
+      }
+      .tp-state.s-triggered { color: var(--bull); background: var(--bull-soft); }
+      .tp-state.s-forming { color: var(--warning); background: var(--warning-soft); }
+      .tp-state.s-stress { color: var(--bear); background: var(--bear-soft); }
+      .tp-note { padding: 0 22px 12px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .tp-note.warn { color: var(--bear); }
+      .tp-acct { display: flex; align-items: center; gap: 8px; padding: 0 22px 18px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+      .tp-acct input {
+        width: 92px; min-width: 0; height: 30px; padding: 0 8px;
+        background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+        color: var(--text-strong); font-size: 13.5px;
+      }
+      .tp-acct input.tp-risk { width: 52px; }
+      .tp-empty { padding: 2px 22px 18px; color: var(--muted); font-size: 14px; }
+      .sr-summary { display: flex; gap: 14px; padding: 0 22px 12px; font-size: 13.5px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+      .sr-summary b { color: var(--text-strong); font-weight: 650; }
+      .sr-table :is(th, td) { padding: 9px 10px; font-size: 13.5px; white-space: nowrap; }
+      .sr-table :is(th, td):first-child { padding-left: 22px; }
+      .sr-table :is(th, td):last-child { padding-right: 22px; text-align: right; }
+      .sr-table .sr-r.up { color: var(--bull); font-weight: 600; }
+      .sr-table .sr-r.down { color: var(--bear); font-weight: 600; }
+      .sr-table .sr-r.wait { color: var(--muted); }
+
+      /* Regime v2 (Signals page, shadow test). */
+      .rv2-top { padding: 0 26px 14px; }
+      .rv2-score { font-size: 30px; font-weight: 750; letter-spacing: -0.02em; color: var(--text-strong); white-space: nowrap; }
+      .rv2-score .rv2-label { margin-left: 10px; font-size: 19px; font-weight: 650; letter-spacing: 0; }
+      .rv2-score:is(.regime-strong-buy, .regime-buy, .regime-cautious-buy) .rv2-label { color: var(--bull); }
+      .rv2-score:is(.regime-caution, .regime-risk, .regime-strong-risk) .rv2-label { color: var(--bear); }
+      .rv2-score.regime-neutral .rv2-label { color: var(--muted); }
+      .rv2-sub { margin-top: 4px; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .rv2-sub b { color: var(--text); font-weight: 600; }
+      .rv2-table td { white-space: nowrap; }
+      .rv2-table .rv2-name { font-weight: 500; color: var(--text-strong); }
+      .rv2-table .rv2-pts { text-align: right; font-weight: 650; }
+      .rv2-table .rv2-pts.risk { color: var(--bear); }
+      .rv2-table tr.is-zero td { color: var(--muted); }
+      .rv2-table tr.is-zero .rv2-name { color: var(--text); font-weight: 400; }
       .wl-pattern-pill {
         display: inline-block; padding: 3px 8px; border-radius: 4px;
         font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
@@ -1458,6 +1526,39 @@
         .wl-plan-banner:not(.open) .pb-more { display: none; }
         .wl-plan-banner:not(.open) .pb-less { display: inline; }
         .wl-plan-banner .pb-cell .pb-value { font-size: 16px; }
+        .wl-plan-banner { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .wl-plan-banner:not(.open) :is(.pb-cell.tp2, .pb-foot) { display: none; }
+        .wl-plan-banner .pb-foot .pf { display: block; overflow: hidden; text-overflow: ellipsis; }
+        .wl-plan-banner .pb-foot .pf-sep { display: none; }
+        .tp-list { padding: 2px 14px 12px; }
+        .tp-row .tp-levels { gap: 12px; }
+        .tp-row .tp-pct { display: none; }
+        .tp-note { padding: 0 14px 10px; }
+        .tp-acct { padding: 0 14px 14px; }
+        .tp-empty { padding: 2px 16px 14px; }
+        .sr-summary { padding: 0 16px 10px; gap: 10px; }
+        .sr-table :is(th, td) { padding: 9px 6px; }
+        .sr-table :is(th, td):first-child { padding-left: 16px; }
+        .sr-table :is(th, td):last-child { padding-right: 16px; }
+        .rv2-top { padding: 0 16px 12px; }
+        .rv2-score { font-size: 26px; }
+        .rv2-sub { font-size: 13px; }
+        /* Regime v2 stress inputs: name + points per row; tap for the rule. */
+        .rv2-table thead { display: none; }
+        .rv2-table, .rv2-table tbody { display: block; }
+        .rv2-table tr {
+          display: grid; grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-areas: "name pts" "val val" "rule rule"; align-items: center; gap: 4px 8px;
+          padding: 11px 16px; border-top: 1px solid var(--border);
+          cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        .rv2-table tr td { padding: 0; border: 0; background: none; }
+        .rv2-table .rv2-name { grid-area: name; font-size: 14.5px; }
+        .rv2-table .rv2-pts { grid-area: pts; }
+        .rv2-table .rv2-val { grid-area: val; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+        .rv2-table .rv2-rule { grid-area: rule; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+        .rv2-table tr:not(.open) .rv2-rule { display: none; }
+        .rv2-table tr.open .sg-chev { transform: rotate(180deg); }
         /* Timeframes on one row. */
         .wl-detail-controls { padding: 12px 12px 0; flex-wrap: nowrap; gap: 2px; }
         .wl-detail-controls button { flex: 1 1 auto; padding: 6px 3px; font-size: 13.5px; white-space: nowrap; }
@@ -1971,6 +2072,11 @@
         </div>
       </div>
 
+      <div class="card stack-gap" id="regime-v2-card">
+        <h2><span>Regime v2<span class="d-only"> · testing</span></span><span class="meta" id="rv2-meta">—</span></h2>
+        <div id="rv2-body"><div class="empty">Loading…</div></div>
+      </div>
+
       <div class="grid">
         <div class="card" style="grid-column: 1 / -1;">
           <h2><span>Bull/Bear Alerts<span class="d-only">: Top Signals / Bottom Signals (Simplified Rules Based on Historical Thresholds)</span></span></h2>
@@ -2086,7 +2192,7 @@
               <div id="wl-detail-chart"></div>
               <div id="wl-detail-vol"></div>
             </div>
-            <div class="wl-legend-hint">EMA 8 / 21 / 50 shown by default · click <b>Stop</b>, <b>TP1</b>, <b>TP2</b>, <b>Pivot</b> in the legend to toggle · drag the bar under volume to zoom the time range</div>
+            <div class="wl-legend-hint">EMA 8 / 21 / 50 shown by default · click <b>Entry</b>, <b>Stop</b>, <b>TP1</b>, <b>TP2</b>, <b>Pivot</b> in the legend to toggle · drag the bar under volume to zoom the time range</div>
           </div>
         </div>
       </div>
@@ -2133,6 +2239,11 @@
         </div>
 
         <div class="wl-side">
+          <div class="card wl-plan-card">
+            <h2>Trade Plan<span class="meta" id="tp-meta">—</span></h2>
+            <div id="tp-body"><div class="tp-empty">Loading…</div></div>
+          </div>
+
           <div class="card wl-timing-card">
             <h2>Market Timing
               <span class="meta" id="wl-timing-meta">Daily · 8 / 21 / 50 EMA</span>
@@ -2142,6 +2253,11 @@
               <div class="wl-timing-tile" data-loading="1"><div class="wt-name">Nasdaq 100 · QQQ</div><div class="wt-status">Loading…</div></div>
               <div class="wl-timing-tile" data-loading="1"><div class="wt-name">Dow 30 · DIA</div><div class="wt-status">Loading…</div></div>
             </div>
+          </div>
+
+          <div class="card wl-record-card" data-fold>
+            <h2 class="fold-head">Signal Record<span class="meta" id="sr-meta">Shared list</span></h2>
+            <div id="sr-body"><div class="tp-empty">Loading…</div></div>
           </div>
 
           <div class="card" data-fold>
@@ -2157,8 +2273,13 @@
                 <div class="gl-item"><code>Cup&amp;H</code><span>Cup &amp; Handle base</span></div>
                 <div class="gl-item"><code>RSI</code><span>Relative Strength Index (14)</span></div>
                 <div class="gl-item"><code>VolR</code><span>Volume vs. 21-day average</span></div>
-                <div class="gl-item"><code>Stop</code><span>Suggested stop loss</span></div>
+                <div class="gl-item"><code>EP</code><span>Gap of 8%+ on 3× volume that holds</span></div>
+                <div class="gl-item"><code>Tight PB</code><span>Narrow day after a sharp pullback</span></div>
+                <div class="gl-item"><code>21 EMA PB</code><span>Quiet pullback to the rising 21 EMA</span></div>
+                <div class="gl-item"><code>Entry</code><span>Setup trigger or base pivot</span></div>
+                <div class="gl-item"><code>Stop</code><span>Signal-day low or pivot − 1 ATR</span></div>
                 <div class="gl-item"><code>TP1 / TP2</code><span>Profit targets at +3R / +5R</span></div>
+                <div class="gl-item"><code>Stress</code><span>Regime v2 stress inputs firing</span></div>
                 <div class="gl-item"><code>R</code><span>Risk (entry − stop) per share</span></div>
                 <div class="gl-item"><code>(W)</code><span>Pattern on the weekly chart</span></div>
               </div>
@@ -4549,6 +4670,12 @@
         };
 
         const WL_TAG_LABELS = {
+          EP:          { label: "EP gap", cls: "t-vol2" },
+          TIGHT_PB:    { label: "Tight PB", cls: "t-htf" },
+          PB21:        { label: "21 EMA PB", cls: "t-htf" },
+          STRESS:      { label: "Stress", cls: "t-ext" },
+          ADR4:        { label: "ADR 4%+", cls: "t-trend" },
+          RS_LEAD:     { label: "RS +10", cls: "t-trend" },
           VOL_DOUBLED: { label: "Vol 2×+", cls: "t-vol2" },
           VOL_SURGE:   { label: "Vol Up",  cls: "t-vol" },
           HVE:         { label: "HVE",     cls: "t-hve" },
@@ -4663,6 +4790,7 @@
             }
             renderWatchlistTable();
             renderWatchlistFocus();
+            renderTradePlan();
             // Refresh the currently-selected detail row inline.
             if (wlCurrentSymbol) {
               const r = (wlData.rows || []).find(r => r.symbol === wlCurrentSymbol);
@@ -4781,6 +4909,162 @@
           } catch (e) { /* ignore */ }
         }
 
+        // ── Trade Plan (next session) ──────────────────────────────────────
+        // Setups and Special Focus bases from the list on screen, with the
+        // buy price, stop and a share count for the risk set below. Account
+        // size and risk stay in this browser (localStorage), never uploaded.
+        const HOLD_HINTS = {
+          TRIM_8: "Below EMA 8: trim 1/3 if held",
+          EXIT_21: "Below EMA 21: exit if held",
+          NO_ADD: "Extended: don't add",
+        };
+        const TP_KEY = "kb:plan";
+        function _tpPrefs() {
+          try { return Object.assign({ acct: null, risk: 1 }, JSON.parse(localStorage.getItem(TP_KEY) || "{}")); }
+          catch (e) { return { acct: null, risk: 1 }; }
+        }
+        function _tpRiskPct() { const r = Number(_tpPrefs().risk); return r > 0 && r <= 5 ? r : 1; }
+        function _tpShares(entry, stop) {
+          const acct = Number(_tpPrefs().acct);
+          if (!(acct > 0) || !(entry > stop)) return null;
+          return Math.floor((acct * _tpRiskPct() / 100) / (entry - stop));
+        }
+        function _usSessionOpen() {
+          const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+          }).formatToParts(new Date()).map(x => [x.type, x.value]));
+          if (p.weekday === "Sat" || p.weekday === "Sun") return false;
+          const mins = Number(p.hour) * 60 + Number(p.minute);
+          return mins >= 9 * 60 + 30 && mins < 16 * 60;
+        }
+        function _tpItems() {
+          const out = [];
+          for (const r of (wlData.rows || [])) {
+            const m = r.metrics;
+            if (!m) continue;
+            const setups = m.setups || [];
+            const lead = setups.find(x => !(x.code === "PB21" && x.stress_warning)) || setups[0];
+            if (lead) {
+              out.push({ sym: r.symbol, m, label: lead.label, state: lead.state, warn: lead.stress_warning,
+                atClose: lead.entry_type === "close", entry: lead.entry_type === "close" ? m.price : lead.trigger, stop: lead.stop });
+            } else if (m.plan_kind === "breakout" && (m.focus_score || 0) >= 4 && m.entry != null && m.stop != null) {
+              out.push({ sym: r.symbol, m, label: m.plan_label || "Base breakout", state: "ready", warn: false,
+                atClose: false, entry: m.entry, stop: m.stop });
+            }
+          }
+          out.sort((a, b) => (a.warn - b.warn) || ((b.m.focus_score || 0) - (a.m.focus_score || 0)));
+          return out.slice(0, 5);
+        }
+        function renderTradePlan() {
+          const body = document.getElementById("tp-body");
+          const meta = document.getElementById("tp-meta");
+          if (!body) return;
+          if (meta) meta.textContent = _usSessionOpen() ? "Today" : "Next session";
+          const v2 = window._regimeV2;
+          const stress = v2 && typeof v2.stress_count === "number" ? v2.stress_count : null;
+          const items = _tpItems();
+          const prefs = _tpPrefs();
+          const rows = items.map(x => {
+            const pct = x.entry > 0 ? ((1 - x.stop / x.entry) * 100).toFixed(1) : "—";
+            const sh = _tpShares(x.entry, x.stop);
+            const state = x.warn ? ["s-stress", "Stress"]
+              : x.state === "triggered" ? ["s-triggered", "Triggered"]
+              : x.state === "forming" ? ["s-forming", "Forming"] : ["", x.atClose ? "At close" : "Buy-stop"];
+            const buy = x.atClose ? `At close <b>${_wlFmt(x.entry)}</b>` : `Buy <b>&gt; ${_wlFmt(x.entry)}</b>`;
+            return `<div class="tp-row${x.warn ? " is-muted" : ""}" data-sym="${_escHtml(x.sym)}">
+              <div class="tp-name"><span class="tp-sym">${_escHtml(x.sym)}</span><span class="tp-setup">${_escHtml(x.label)}</span></div>
+              <span class="tp-state ${state[0]}">${state[1]}</span>
+              <div class="tp-levels"><span>${buy}</span><span>Stop <b>${_wlFmt(x.stop)}</b><span class="tp-pct"> −${pct}%</span></span>${sh != null ? `<span><b>${sh.toLocaleString()}</b> sh</span>` : ""}</div>
+            </div>`;
+          }).join("");
+          const warn = stress != null && stress >= 2
+            ? `<div class="tp-note warn">Market stress ${stress} of 5: pullbacks paused, size down.</div>` : "";
+          body.innerHTML = (rows
+            ? `<div class="tp-list">${rows}</div>`
+            : `<div class="tp-empty">No setups or bases ready. New ones show after the close.</div>`) + warn +
+            `<div class="tp-acct"><label for="tp-acct">Account $</label><input id="tp-acct" type="number" min="0" step="1000" inputmode="numeric" placeholder="e.g. 50000" value="${prefs.acct ?? ""}" />
+              <label for="tp-risk">Risk</label><input id="tp-risk" class="tp-risk" type="number" min="0.1" max="5" step="0.25" inputmode="decimal" value="${_tpRiskPct()}" />%</div>`;
+          body.querySelectorAll(".tp-row").forEach(el => el.addEventListener("click", () => loadWatchlistDetail(el.dataset.sym)));
+          const save = () => {
+            const acct = Number(document.getElementById("tp-acct").value);
+            const risk = Number(document.getElementById("tp-risk").value);
+            localStorage.setItem(TP_KEY, JSON.stringify({ acct: acct > 0 ? acct : null, risk: risk > 0 && risk <= 5 ? risk : 1 }));
+            renderTradePlan();
+            const cur = (wlData.rows || []).find(r => r.symbol === wlCurrentSymbol);
+            if (cur) renderWatchlistDetailHeader(cur);
+          };
+          document.getElementById("tp-acct").addEventListener("change", save);
+          document.getElementById("tp-risk").addEventListener("change", save);
+          _wlSyncHeights();
+        }
+
+        // ── Signal Record (shared list, graded by the Worker) ──────────────
+        const SR_SETUP = { EP: "EP", TIGHT_PB: "Tight PB", PB21: "21 EMA PB", BASE: "Base" };
+        async function loadSignalRecord() {
+          const body = document.getElementById("sr-body");
+          if (!body) return;
+          try {
+            const resp = await fetch(`${window.API_BASE||""}/api/signal-log`);
+            if (!resp.ok) throw new Error(String(resp.status));
+            const data = await resp.json();
+            const rows = data.rows || [];
+            const rec = data.record || {};
+            if (!rows.length) {
+              body.innerHTML = `<div class="tp-empty">Setups on the shared list are logged here and graded after each close.</div>`;
+              _wlSyncHeights();
+              return;
+            }
+            const fmtR = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1) + "R";
+            const avg = rec.avg_r_plan == null ? "—" : fmtR(rec.avg_r_plan);
+            const summary = `<div class="sr-summary"><span>Closed <b>${rec.closed || 0}</b></span><span>Wins <b>${rec.wins_plan || 0}</b></span><span>Avg <b>${avg}</b></span><span>Open <b>${(rec.open || 0) + (rec.pending || 0)}</b></span></div>`;
+            const tr = rows.map(r => {
+              let res = `<span class="sr-r wait">Waiting</span>`;
+              if (r.status === "open" && r.r_now != null) res = `<span class="sr-r ${r.r_now >= 0 ? "up" : "down"}" title="Open trade">${fmtR(r.r_now)} open</span>`;
+              if (r.status === "closed" && r.r_plan != null) {
+                res = `<span class="sr-r ${r.r_plan > 0 ? "up" : "down"}" title="+3R plan exit ${fmtR(r.r_plan)} · 21 EMA trail ${r.r_trend == null ? "—" : fmtR(r.r_trend)}">${fmtR(r.r_plan)}</span>`;
+              }
+              return `<tr><td>${_escHtml(String(r.signal_date || "").slice(5))}</td><td><b>${_escHtml(r.symbol)}</b></td><td>${_escHtml(SR_SETUP[r.setup] || r.setup)}</td><td>${res}</td></tr>`;
+            }).join("");
+            body.innerHTML = summary + `<div class="table-scroll"><table class="sr-table"><thead><tr><th>Date</th><th>Symbol</th><th>Setup</th><th>Result</th></tr></thead><tbody>${tr}</tbody></table></div>`;
+          } catch (e) {
+            body.innerHTML = `<div class="tp-empty">Signal record unavailable.</div>`;
+          }
+          _wlSyncHeights();
+        }
+
+        // ── Regime v2 (shadow test, Signals page) ──────────────────────────
+        const RV2_RULES = {
+          rates: "Real 10Y +0.25/+0.40 pp or 10Y +0.40/+0.60 pp in 20 days",
+          move: "MOVE ≥ 110 / ≥ 130",
+          hy_widening: "HY +40/+75 bp in 20 days, or +60/+100 bp over its 60-day low",
+          nfci: "NFCI +0.05 / +0.10 in 4 weeks",
+          skew: "SKEW ≥ 150 / ≥ 160",
+          narrow: "S&P within 2% of its high, under 55% above the 50-day MA",
+        };
+        function renderRegimeV2(r) {
+          const body = document.getElementById("rv2-body");
+          const meta = document.getElementById("rv2-meta");
+          if (!body) return;
+          const v = r && r.v2;
+          if (!v) { body.innerHTML = `<div class="empty">No v2 reading yet.</div>`; return; }
+          const pts = (x) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(1);
+          if (meta && v.computed_at) {
+            meta.textContent = "Updated " + new Date(v.computed_at).toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" });
+          }
+          const v1 = `${(r.score >= 0 ? "+" : "") + r.score.toFixed(1)} ${_escHtml(r.label)}`;
+          const rows = (v.stress || []).map(x => {
+            const reading = x.stale ? `No reading since ${x.as_of}` : x.missing ? "Waiting for data" : (x.detail || "—");
+            return `<tr data-m-toggle class="${x.points ? "" : "is-zero"}"><td class="rv2-name">${_escHtml(x.title)}<span class="m-only">${SG_CHEV}</span></td><td class="rv2-val" title="${_escHtml(x.reason || "")}">${_escHtml(reading)}</td><td class="rv2-pts ${x.points < 0 ? "risk" : ""}">${x.points ? pts(x.points) : "0"}</td><td class="rv2-rule meta">${_escHtml(RV2_RULES[x.id] || "")}</td></tr>`;
+          }).join("");
+          body.innerHTML = `<div class="rv2-top">
+              <div class="rv2-score ${v.css_class}">${(v.score >= 0 ? "+" : "") + v.score.toFixed(1)}<span class="rv2-label">${_escHtml(v.label)}</span></div>
+              <div class="rv2-sub"><span class="d-only">Live score </span><span class="m-only">Live </span><b>${v1}</b><span class="d-only"> · alerts still follow the live score</span></div>
+              <div class="rv2-sub">${pts(v.buy_points)} buy · ${pts(-v.risk_points)} risk · ${pts(-v.stress_points)} stress${v.stress_halved ? " (halved)" : ""}<span class="d-only"> · stress count ${v.stress_count} of 5</span></div>
+            </div>
+            <div class="table-scroll"><table class="rv2-table"><thead><tr><th>Stress input</th><th>Reading</th><th style="text-align:right;">Points</th><th>Rule (1st / 2nd tier)</th></tr></thead><tbody>${rows}</tbody></table></div>
+            <div class="empty"><span class="d-only">v2 keeps the buy side and swaps the greed-level risk rules (VIX &lt; 14, RSI &gt; 70, NDX breadth &gt; 80, HY ≤ 2.7%, SKEW ≥ 155), which came before calmer markets, for stress building: rate shocks, bond volatility, widening credit, tighter financial conditions, tail hedging and a narrow market. Stress counts half when buy points reach 4.5. It runs beside the live score for a few weeks before replacing it.</span><span class="m-only">Testing beside the live score. Alerts still follow the live score.</span></div>`;
+        }
+
         function renderWatchlistFocus() {
           const wrap = document.getElementById("wl-focus-list");
           const empty = document.getElementById("wl-focus-empty");
@@ -4801,7 +5085,7 @@
           wrap.innerHTML = focus.map(r => {
             const m = r.metrics || {};
             const reasons = m.focus_reasons || [];
-            const hot = (m.focus_score || 0) >= 6 || reasons.includes("VOL_DOUBLED");
+            const hot = (m.setups || []).some(x => !(x.code === "PB21" && x.stress_warning));
             const chg = m.chg_1d_pct;
             const chgCls = _wlChgClass(chg);
             return `<div class="wl-focus-item ${hot ? "is-hot" : ""}" data-sym="${r.symbol}">
@@ -5053,7 +5337,7 @@
         }
 
         function renderWatchlistDetailHeader(r) {
-          const m = r.metrics || {};
+          let m = r.metrics || {};
           document.getElementById("wd-name").textContent = r.symbol;
           document.getElementById("wd-meta").textContent = (r.name && r.name !== r.symbol) ? r.name : "";
           document.getElementById("wd-price").textContent = m.price == null ? "—" : _wlFmt(m.price);
@@ -5098,26 +5382,43 @@
             ${sub ? `<div class="kv-sub">${sub}</div>` : ""}
           </div>`).join("");
 
-          // Plan banner
+          // Plan banner: entry, stop, +3R, +5R, then size and management.
           const pb = document.getElementById("wl-plan-banner");
-          if (m.stop != null && m.tp1 != null) {
-            const rr = m.risk != null ? (3).toFixed(0) : "3";
+          // Rows cached before the v2 plan have no entry: they used today's price.
+          if (m.entry == null && m.stop != null) m = { ...m, entry: m.price, plan_kind: m.plan_kind || "generic" };
+          if (m.entry != null && m.stop != null && m.tp1 != null) {
+            const setup = (m.setups || [])[0];
+            const atClose = setup && setup.entry_type === "close";
+            const entryLabel = m.plan_kind === "generic" ? "Price" : atClose ? "Buy at close" : "Buy above";
+            const shares = _tpShares(m.entry, m.stop);
+            const hints = (m.hold_hints || []).map(h => HOLD_HINTS[h]).filter(Boolean);
+            const foot = [
+              `+2R <b>${_wlFmt(m.tp_2r)}</b>: move the stop to breakeven`,
+              shares != null ? `<b>${shares.toLocaleString()}</b> sh at ${_tpRiskPct()}% risk` : "",
+              ...hints.map(h => `<span class="pb-warn">${h}</span>`),
+            ].filter(Boolean).map(x => `<span class="pf">${x}</span>`).join(`<span class="pf-sep"> · </span>`);
             pb.innerHTML = `
+              <div class="pb-cell entry">
+                <div class="pb-label">${entryLabel}</div>
+                <div class="pb-value">${_wlFmt(m.entry)}</div>
+                <div class="kv-sub"><span class="pb-more">${m.plan_kind === "generic" ? "No setup or base" : _escHtml(m.plan_label || "")}</span><span class="pb-less">${m.plan_kind === "generic" ? "No setup" : "Entry"}</span></div>
+              </div>
               <div class="pb-cell stop">
-                <div class="pb-label"><span class="pb-more">Suggested </span>Stop</div>
+                <div class="pb-label">Stop</div>
                 <div class="pb-value">${_wlFmt(m.stop)}</div>
-                <div class="kv-sub" style="color: var(--muted);">-${_wlFmt(m.stop_pct, 2)}%<span class="pb-more"> · risk ${_wlFmt(m.risk)}</span></div>
+                <div class="kv-sub">-${_wlFmt(m.stop_pct, 2)}%<span class="pb-more"> · risk ${_wlFmt(m.risk)}</span></div>
               </div>
               <div class="pb-cell tp1">
-                <div class="pb-label">TP1<span class="pb-more"> (+3R · trim 1/4 – 1/3)</span></div>
+                <div class="pb-label">TP1<span class="pb-more"> · +3R</span></div>
                 <div class="pb-value">${_wlFmt(m.tp1)}</div>
-                <div class="kv-sub" style="color: var(--muted);"><span class="pb-less">+3R</span><span class="pb-more">Move stop to breakeven</span></div>
+                <div class="kv-sub"><span class="pb-less">+3R</span><span class="pb-more">Trim 1/4 – 1/3</span></div>
               </div>
               <div class="pb-cell tp2">
-                <div class="pb-label">TP2<span class="pb-more"> (+5R · trim again)</span></div>
+                <div class="pb-label">TP2 · +5R</div>
                 <div class="pb-value">${_wlFmt(m.tp2)}</div>
-                <div class="kv-sub" style="color: var(--muted);"><span class="pb-less">+5R</span><span class="pb-more">Trail remainder by EMA 8 / 21</span></div>
-              </div>`;
+                <div class="kv-sub">Trail the rest by EMA 21</div>
+              </div>
+              <div class="pb-foot">${foot}</div>`;
           } else {
             pb.innerHTML = `<div class="pb-cell" style="grid-column: 1/-1; color: var(--muted); text-align: center;">No price data — plan unavailable.</div>`;
           }
@@ -5253,6 +5554,7 @@
               emphasis: { disabled: true },
             });
           };
+          mkLevel("Entry", m.entry, T.text, "dashed");
           mkLevel("Stop", m.stop, T.bear, "dashed");
           mkLevel("TP1", m.tp1, T.bull, "dashed");
           mkLevel("TP2", m.tp2, T.bull, "dotted");
@@ -5338,8 +5640,8 @@
               textStyle: { color: T.muted, fontSize: narrow ? 11.5 : 12 },
               inactiveColor: T.faint,
               // "" starts a new legend row: EMAs first, then the levels.
-              data: ["EMA 8", "EMA 21", "EMA 50", "Pattern", ...(narrow ? [""] : []), "Stop", "TP1", "TP2", "Pivot"],
-              selected: { "Stop": false, "TP1": false, "TP2": false, "Pivot": false },
+              data: ["EMA 8", "EMA 21", "EMA 50", "Pattern", ...(narrow ? [""] : []), "Entry", "Stop", "TP1", "TP2", "Pivot"],
+              selected: { "Entry": false, "Stop": false, "TP1": false, "TP2": false, "Pivot": false },
             },
             tooltip: _ecTip(T, {
               trigger: "axis",
@@ -5684,6 +5986,7 @@
           initWatchlist();
           loadWatchlist(false);
           loadMarketTiming();
+          loadSignalRecord();
           loadMarketNews();
 
           // ── Background auto-refresh ───────────────────────────────────────
@@ -5704,6 +6007,7 @@
                 typeof loadMarketOverview === "function" ? loadMarketOverview() : null,
                 typeof loadWatchlist === "function" ? loadWatchlist(false) : null,
                 typeof loadMarketTiming === "function" ? loadMarketTiming() : null,
+                typeof loadSignalRecord === "function" ? loadSignalRecord() : null,
                 typeof loadMarketNews === "function" ? loadMarketNews() : null,
               ]);
             } catch (e) {
@@ -5973,6 +6277,11 @@
             // ── Market Regime panel + drivers ───────────────────────────────
             if (regimeResp.ok) {
               const r = await regimeResp.json();
+              // Regime v2 runs in shadow mode: its own card on the Signals
+              // page, and its stress count pauses pullbacks in the Trade Plan.
+              window._regimeV2 = r.v2 || null;
+              try { renderRegimeV2(r); } catch (e) { console.error("renderRegimeV2:", e); }
+              try { renderTradePlan(); } catch (e) {}
               const container = document.getElementById("regime-container");
               if (!container) return;
 

@@ -1,5 +1,5 @@
-import type { Env } from "./lib/types";
-import { ALL_INDICATOR_IDS } from "./lib/types";
+import type { Env, MarketRegimeV2, Observation } from "./lib/types";
+import { ALL_INDICATOR_IDS, STRESS_SERIES_IDS } from "./lib/types";
 import {
   getLatestObservations,
   getRecentObservations,
@@ -17,6 +17,7 @@ import {
   getWatchlistMetricsFor,
   getWatchlistMetricAges,
   upsertWatchlistMetrics,
+  getSeriesSince,
 } from "./lib/db";
 import type { WatchlistRow } from "./lib/db";
 import { getSupabaseUser, isAdmin } from "./lib/auth";
@@ -24,17 +25,22 @@ import { checkRegimeAlert, currentRegime, deliver, pushConfigured, regimeMessage
 import type { AlertTarget } from "./lib/alerts";
 import { sbDeleteUser, sbSelect, supabaseAdminConfigured } from "./lib/supabase";
 import { computeSignals } from "./lib/signals";
-import { computeMarketRegime } from "./lib/regime";
+import { computeMarketRegime, computeMarketRegimeV2 } from "./lib/regime";
 import { fetchYahooChart, fetchYahooOHLCV, fetchYahooNews, fetchYahooSpark } from "./lib/yahoo";
-import type { YahooChartPoint } from "./lib/yahoo";
+import type { YahooBar, YahooChartPoint } from "./lib/yahoo";
 import { ASSET_RE, assetLabel, resolveSymbol, searchSymbols, verifySymbol } from "./lib/symbols";
 import type { SymbolKind, SymbolMatch } from "./lib/symbols";
 import { computeMetrics, ema } from "./lib/analysis";
+import type { WatchMetrics } from "./lib/analysis";
+import {
+  getActiveSignals, gradeSignal, insertSignals, recentSignals, signalChanged, signalsFromMetrics, updateSignals,
+} from "./lib/signal-log";
+import type { SignalRow } from "./lib/signal-log";
 import { fetchStooqDailyCloses, fetchStooqQuote } from "./lib/stooq";
 import { fetchCompanyNews, fetchGeneralNews, newsTickerForYahooSymbol } from "./lib/finnhub";
-import { DAILY_SOURCES, fetchAllProviders } from "./lib/fetchers";
+import { DAILY_SOURCES, fetchAllProviders, fetchStressInputs } from "./lib/fetchers";
 import { countSubrequests } from "./lib/subrequests";
-import { fetchNdxBreadth } from "./lib/breadth";
+import { fetchNdxBreadth, fetchSp500Breadth } from "./lib/breadth";
 import { WORLD_INDICES, getIndexMeta } from "./lib/world";
 
 // ── CORS helpers ─────────────────────────────────────────────────────────────
@@ -318,12 +324,63 @@ async function buildMarketTiming(yahooSym: string, name: string) {
 // ── Watchlist metric builder (page 05) ───────────────────────────────────────
 // Pull ~2y of daily OHLCV from Yahoo for a single symbol and run the analysis
 // library over it. Returns null on a hard fetch failure.
-async function buildWatchMetrics(symbol: string, name: string | null) {
+async function scoreSymbol(symbol: string, name: string | null, wctx: WatchContext) {
   const yahooSym = symbol; // watchlist symbols are stored as plain Yahoo tickers
   const bars = await fetchYahooOHLCV(yahooSym, "2y", "1d");
   if (!bars.length) return null;
-  const m = computeMetrics(symbol, bars);
-  return { ...m, name: name ?? symbol };
+  const complete = lastBarComplete(bars);
+  const m = computeMetrics(symbol, bars, { ...wctx, lastBarComplete: complete });
+  return { metrics: { ...m, name: name ?? symbol }, bars, complete };
+}
+
+async function buildWatchMetrics(symbol: string, name: string | null, wctx: WatchContext) {
+  return (await scoreSymbol(symbol, name, wctx))?.metrics ?? null;
+}
+
+// What the watchlist scoring needs besides the stock's own bars: the regime
+// v2 stress count (pullback setups don't score at 2 or more) and SPY's
+// 6-month change for the relative-strength tag. Two one-row reads.
+type WatchContext = { stress: number | null; spy6m: number | null };
+
+async function loadWatchContext(env: Env): Promise<WatchContext> {
+  const [v2, spx] = await Promise.all([
+    readRegimeV2(env).catch(() => null),
+    env.DB.prepare("SELECT meta_json FROM observations WHERE indicator_id = 'sp500_off_high' ORDER BY as_of DESC LIMIT 1")
+      .first<{ meta_json: string | null }>().catch(() => null),
+  ]);
+  let spy6m: number | null = null;
+  try {
+    const meta = spx?.meta_json ? JSON.parse(spx.meta_json) as { chg_6m_pct?: number } : null;
+    if (typeof meta?.chg_6m_pct === "number") spy6m = meta.chg_6m_pct;
+  } catch { /* keep null */ }
+  return { stress: v2?.stress_count ?? null, spy6m };
+}
+
+/** New York date, weekday and minutes since midnight. */
+function nyClock(now = new Date()): { date: string; weekday: string; minutes: number } {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+      weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(now).map((p) => [p.type, p.value]),
+  );
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    weekday: parts.weekday,
+    minutes: Number(parts.hour) * 60 + Number(parts.minute),
+  };
+}
+
+/**
+ * False while the newest daily bar is today's New York session and may still
+ * change: until 16:15, so the 16:00 run doesn't log a setup from a close the
+ * auction hasn't settled yet.
+ */
+function lastBarComplete(bars: YahooBar[], now = new Date()): boolean {
+  const last = bars[bars.length - 1];
+  if (!last) return true;
+  const ny = nyClock(now);
+  return last.date !== ny.date || ny.minutes >= 16 * 60 + 15;
 }
 
 // ── Watchlist access control ────────────────────────────────────────────────
@@ -402,7 +459,8 @@ async function scoreWatchlist(
   );
   const targets = personal ? needs.slice(0, MAX_SCORED_PER_REQUEST) : needs;
   if (targets.length) {
-    const settled = await Promise.allSettled(targets.map((w) => buildWatchMetrics(w.symbol, w.name)));
+    const wctx = await loadWatchContext(env);
+    const settled = await Promise.allSettled(targets.map((w) => buildWatchMetrics(w.symbol, w.name, wctx)));
     const writes: Array<{ symbol: string; focus_score: number; payload: unknown }> = [];
     for (let i = 0; i < settled.length; i++) {
       const r = settled[i];
@@ -465,9 +523,9 @@ function usMarketWindowOpen(now = new Date()): boolean {
 async function refreshWatchlistMetrics(
   env: Env,
   pace?: { max: number; minAgeSec: number },
-): Promise<{ wrote: number; due: number; total: number }> {
+): Promise<{ wrote: number; due: number; total: number; added: number; graded: number }> {
   const wl = await getWatchlist(env.DB);
-  if (!wl.length) return { wrote: 0, due: 0, total: 0 };
+  if (!wl.length) return { wrote: 0, due: 0, total: 0, added: 0, graded: 0 };
   let targets = wl;
   if (pace) {
     const ages = await getWatchlistMetricAges(env.DB, wl.map((w) => w.symbol));
@@ -477,18 +535,69 @@ async function refreshWatchlistMetrics(
       .sort((a, b) => age(b.symbol) - age(a.symbol))
       .slice(0, pace.max);
   }
+  const wctx = await loadWatchContext(env);
   const settled = await Promise.allSettled(
-    targets.map((w) => buildWatchMetrics(w.symbol, w.name)),
+    targets.map((w) => scoreSymbol(w.symbol, w.name, wctx)),
   );
   const out: Array<{ symbol: string; focus_score: number; payload: unknown }> = [];
+  const scored: Array<{ metrics: WatchMetrics; bars: YahooBar[]; complete: boolean }> = [];
   for (let i = 0; i < settled.length; i++) {
     const r = settled[i];
     if (r.status === "fulfilled" && r.value) {
-      out.push({ symbol: targets[i].symbol, focus_score: r.value.focus_score ?? 0, payload: r.value });
+      out.push({ symbol: targets[i].symbol, focus_score: r.value.metrics.focus_score ?? 0, payload: r.value.metrics });
+      scored.push(r.value);
     }
   }
   if (out.length) await upsertWatchlistMetrics(env.DB, out);
-  return { wrote: out.length, due: targets.length, total: wl.length };
+  let logged = { added: 0, graded: 0 };
+  if (pace && scored.length) {
+    try { logged = await logAndGradeSignals(env, scored, new Set(wl.map((w) => w.symbol))); } catch (e) { console.error("signal log failed", e); }
+  }
+  return { wrote: out.length, due: targets.length, total: wl.length, ...logged };
+}
+
+// ── Signal log (Phase 3) ─────────────────────────────────────────────────────
+const ORPHAN_GRADES_PER_RUN = 3;
+// The cron's shared-watchlist refresh already has each symbol's daily bars,
+// so it logs new setups and re-grades the open ones from the same data: no
+// extra outbound requests. A symbol with a pending or open signal logs
+// nothing new until that one is done (one trade at a time, as tested).
+async function logAndGradeSignals(
+  env: Env,
+  scored: Array<{ metrics: WatchMetrics; bars: YahooBar[]; complete: boolean }>,
+  watchlist: Set<string>,
+): Promise<{ added: number; graded: number }> {
+  const bySymbol = new Map(scored.map((x) => [x.metrics.symbol, { bars: x.bars, complete: x.complete }]));
+  const active = await getActiveSignals(env.DB);
+  // Signals of symbols since removed from the watchlist: fetch their bars
+  // here, a few per run, so they still reach a result.
+  const orphans = [...new Set(active.map((a) => a.symbol))]
+    .filter((sym) => !watchlist.has(sym) && !bySymbol.has(sym)).slice(0, ORPHAN_GRADES_PER_RUN);
+  await Promise.all(orphans.map(async (sym) => {
+    const bars = await fetchYahooOHLCV(sym, "2y", "1d").catch(() => [] as YahooBar[]);
+    if (bars.length) bySymbol.set(sym, { bars, complete: lastBarComplete(bars) });
+  }));
+  const changed: SignalRow[] = [];
+  for (const sig of active) {
+    const x = bySymbol.get(sig.symbol);
+    if (!x) continue;
+    const next = gradeSignal(sig, x.bars, x.complete);
+    if (signalChanged(sig, next)) changed.push(next);
+  }
+  await updateSignals(env.DB, changed);
+  const stillActive = new Set(active.filter((a) => {
+    const c = changed.find((x) => x.id === a.id);
+    return !c || c.status === "pending" || c.status === "open";
+  }).map((a) => a.symbol));
+  const fresh: SignalRow[] = [];
+  for (const x of scored) {
+    if (stillActive.has(x.metrics.symbol)) continue;
+    for (const sig of signalsFromMetrics(x.metrics, x.bars, x.complete).slice(0, 1)) {
+      fresh.push(gradeSignal(sig, x.bars, x.complete));
+    }
+  }
+  await insertSignals(env.DB, fresh);
+  return { added: fresh.length, graded: changed.length };
 }
 
 // Daily sources (FRED, the two PE pages) are fetched by the */30 cron at most
@@ -508,22 +617,90 @@ async function writeJsonKv(env: Env, key: string, value: unknown): Promise<void>
   ).bind(key, JSON.stringify(value)).run();
 }
 
+// ── Regime v2 snapshot ───────────────────────────────────────────────────────
+// v2 runs in shadow mode next to v1 (docs/algorithm-v2-plan.md, Phase 1).
+// Both crons recompute it after storing new readings and keep the result in
+// kv_store, so /api/regime serves it with a one-row read.
+const REGIME_V2_KEY = "regime:v2";
+
+async function computeRegimeV2Now(env: Env): Promise<MarketRegimeV2> {
+  const [latest, history, ycHistory] = await Promise.all([
+    getLatestObservations(env.DB),
+    getSeriesSince(env.DB, STRESS_SERIES_IDS, 130),
+    getRecentObservations(env.DB, "yc_10y_2y", 720),
+  ]);
+  return computeMarketRegimeV2(latest, history, ycHistory.some((o) => o.value < 0));
+}
+
+async function refreshRegimeV2(env: Env): Promise<MarketRegimeV2> {
+  const v2 = await computeRegimeV2Now(env);
+  await writeJsonKv(env, REGIME_V2_KEY, v2);
+  return v2;
+}
+
+async function readRegimeV2(env: Env): Promise<MarketRegimeV2 | null> {
+  const row = await env.DB.prepare("SELECT value FROM kv_store WHERE key = ?").bind(REGIME_V2_KEY).first<{ value: string }>();
+  try { return row ? JSON.parse(row.value) as MarketRegimeV2 : null; } catch { return null; }
+}
+
 // ── After-close jobs (second cron trigger) ───────────────────────────────────
-// Must match the second entry of `crons` in wrangler.toml. Runs three times
-// after the US close (21:00 UTC in winter, 20:00 in summer) so a late or
-// failed run is retried. It has its own trigger because the */30 run already
-// makes close to the free plan's 50 outbound requests per invocation.
+// Must match the second entry of `crons` in wrangler.toml. It fires at 21:10,
+// 22:10 and 23:10 UTC on weekdays, after the US close (21:00 UTC in winter,
+// 20:00 in summer). The two breadth jobs are the heaviest work in the Worker
+// (about 0.5 MB and 1 MB of JSON), so each run does at most one of them, the
+// first not yet done today: NDX at 21:10, S&P 500 at 22:10, and the 23:10 run
+// retries whichever failed. Every run refreshes the light stress inputs
+// (FRED posts the 10-year yields late in the day) and the v2 snapshot.
 const AFTER_CLOSE_CRON = "10 21,22,23 * * 1-5";
+const AFTER_CLOSE_KEY = "afterclose:last_ok";
+
+/** Today's date in New York (YYYY-MM-DD). */
+function nyDate(now = new Date()): string {
+  return nyClock(now).date;
+}
 
 async function runAfterCloseJobs(env: Env): Promise<void> {
   const t0 = Date.now();
+  const today = nyDate();
+  const lastOk = await readJsonKv(env, AFTER_CLOSE_KEY).catch(() => ({} as Record<string, number>));
+  const doneToday = (task: string) => lastOk[task] != null && nyDate(new Date(lastOk[task])) === today;
+
   try {
-    const obs = await fetchNdxBreadth();
-    await upsertObservations(env.DB, obs);
-    const last = obs[obs.length - 1];
-    console.log(`after-close: ndx breadth wrote=${obs.length} last=${last?.as_of}:${last?.value} (+${Date.now() - t0}ms)`);
+    const { ok, err, observations } = await fetchStressInputs(env);
+    await upsertObservations(env.DB, observations);
+    console.log(`after-close: stress inputs wrote=${observations.length} ok=[${ok.join(",")}]${err.length ? ` err=[${err.join(",")}]` : ""} (+${Date.now() - t0}ms)`);
   } catch (e) {
-    console.error("after-close: ndx breadth failed", e);
+    console.error("after-close: stress inputs failed", e);
+  }
+
+  const heavy: Array<[string, () => Promise<Observation[]>]> = [
+    ["ndx_breadth", fetchNdxBreadth],
+    ["spx_breadth", fetchSp500Breadth],
+  ];
+  const next = heavy.find(([name]) => !doneToday(name));
+  if (next) {
+    const [name, fn] = next;
+    try {
+      const obs = await fn();
+      await upsertObservations(env.DB, obs);
+      const last = obs[obs.length - 1];
+      console.log(`after-close: ${name} wrote=${obs.length} last=${last?.as_of}:${last?.value} (+${Date.now() - t0}ms)`);
+      if (obs.length) {
+        lastOk[name] = Date.now();
+        await writeJsonKv(env, AFTER_CLOSE_KEY, lastOk);
+      }
+    } catch (e) {
+      console.error(`after-close: ${name} failed`, e);
+    }
+  } else {
+    console.log("after-close: both breadth jobs already done today");
+  }
+
+  try {
+    const v2 = await refreshRegimeV2(env);
+    console.log(`after-close: regime v2 ${v2.score} ${v2.label} stress=${v2.stress_points} count=${v2.stress_count} (+${Date.now() - t0}ms)`);
+  } catch (e) {
+    console.error("after-close: regime v2 failed", e);
   }
 }
 
@@ -590,13 +767,42 @@ export default {
       return json(signals);
     }
 
+    // ── /api/signal-log ──────────────────────────────────────────────────────
+    // The last 20 setups logged from the shared watchlist and their record.
+    if (pathname === "/api/signal-log" && request.method === "GET") {
+      const rows = await recentSignals(env.DB, 20).catch(() => [] as SignalRow[]);
+      const closed = rows.filter((r) => r.status === "closed");
+      const avg = (xs: Array<number | null>) => {
+        const v = xs.filter((x): x is number => typeof x === "number");
+        return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 100) / 100 : null;
+      };
+      return json({
+        rows,
+        record: {
+          closed: closed.length,
+          open: rows.filter((r) => r.status === "open").length,
+          pending: rows.filter((r) => r.status === "pending").length,
+          wins_plan: closed.filter((r) => (r.r_plan ?? 0) > 0).length,
+          avg_r_plan: avg(closed.map((r) => r.r_plan)),
+          avg_r_trend: avg(closed.map((r) => r.r_trend)),
+        },
+      });
+    }
+
     // ── /api/regime ──────────────────────────────────────────────────────────
     if (pathname === "/api/regime" && request.method === "GET") {
       const latest = await getLatestObservations(env.DB);
       const ycHistory = await getRecentObservations(env.DB, "yc_10y_2y", 720);
       const ycRecentlyInverted = ycHistory.some((o) => o.value < 0);
       const regime = computeMarketRegime(latest, ycRecentlyInverted);
-      return json(regime);
+      // v2 (shadow mode) comes from the cron's snapshot; computed here only
+      // until the first cron run after a deploy has stored one.
+      let v2 = await readRegimeV2(env).catch(() => null);
+      if (!v2) {
+        v2 = await computeRegimeV2Now(env).catch(() => null);
+        if (v2) ctx.waitUntil(writeJsonKv(env, REGIME_V2_KEY, v2).catch(() => {}));
+      }
+      return json({ ...regime, v2 });
     }
 
     // ── /api/indicator-history ───────────────────────────────────────────────
@@ -1006,7 +1212,7 @@ export default {
         );
         // Pre-warm metrics so the row shows up populated.
         ctx.waitUntil((async () => {
-          const m = await buildWatchMetrics(sym, name);
+          const m = await buildWatchMetrics(sym, name, await loadWatchContext(env));
           if (m) await upsertWatchlistMetrics(env.DB, [{ symbol: sym, focus_score: m.focus_score ?? 0, payload: m }]);
         })());
         return json({ ok: true, symbol: sym });
@@ -1177,8 +1383,9 @@ export default {
       // Metrics (ADR/ATR/RSI/patterns/stops) are ALWAYS computed on daily bars
       // over a 2y window, regardless of the chart timeframe, so the swing plan
       // stays consistent when the user flips to weekly / intraday views.
-      const dailyBars = await fetchYahooOHLCV(symbol, "2y", "1d");
-      const metrics = computeMetrics(symbol, dailyBars.length ? dailyBars : bars);
+      const [dailyBars, wctx] = await Promise.all([fetchYahooOHLCV(symbol, "2y", "1d"), loadWatchContext(env)]);
+      const scored = dailyBars.length ? dailyBars : bars;
+      const metrics = computeMetrics(symbol, scored, { ...wctx, lastBarComplete: lastBarComplete(scored) });
 
       return json({
         symbol, tf, interval: preset.interval,
@@ -1316,10 +1523,17 @@ export default {
         }
 
         // 2b) Regime-change push alerts (on the indicators just stored).
+        //     They still follow v1; v2 runs beside it in shadow mode.
         try {
           console.log(`scheduled: ${await checkRegimeAlert(env)} (+${Date.now() - t0}ms)`);
         } catch (e) {
           console.error("scheduled: regime alert failed", e);
+        }
+        try {
+          const v2 = await refreshRegimeV2(env);
+          console.log(`scheduled: regime v2 ${v2.score} ${v2.label} (+${Date.now() - t0}ms)`);
+        } catch (e) {
+          console.error("scheduled: regime v2 failed", e);
         }
 
         // 3) Refresh the market_overview cache (Indices / Futures & Crypto
@@ -1346,7 +1560,7 @@ export default {
             max: WATCHLIST_REFRESH_MAX,
             minAgeSec: open ? WATCHLIST_MIN_AGE_OPEN_SEC : WATCHLIST_MIN_AGE_CLOSED_SEC,
           });
-          console.log(`scheduled: watchlist wrote=${r.wrote}/${r.due} of ${r.total} (${open ? "market open" : "market closed"}) (+${Date.now() - t0}ms)`);
+          console.log(`scheduled: watchlist wrote=${r.wrote}/${r.due} of ${r.total} (${open ? "market open" : "market closed"}) signals +${r.added} graded=${r.graded} (+${Date.now() - t0}ms)`);
         } catch (e) {
           console.error("scheduled: watchlist refresh failed", e);
         }
