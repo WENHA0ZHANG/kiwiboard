@@ -15,6 +15,7 @@ import {
   removeWatchlistSymbol,
   reorderWatchlist,
   getWatchlistMetricsFor,
+  getWatchlistMetricAges,
   upsertWatchlistMetrics,
 } from "./lib/db";
 import type { WatchlistRow } from "./lib/db";
@@ -24,13 +25,15 @@ import type { AlertTarget } from "./lib/alerts";
 import { sbDeleteUser, sbSelect, supabaseAdminConfigured } from "./lib/supabase";
 import { computeSignals } from "./lib/signals";
 import { computeMarketRegime } from "./lib/regime";
-import { fetchYahooChart, fetchYahooOHLCV, fetchYahooNews } from "./lib/yahoo";
+import { fetchYahooChart, fetchYahooOHLCV, fetchYahooNews, fetchYahooSpark } from "./lib/yahoo";
+import type { YahooChartPoint } from "./lib/yahoo";
 import { ASSET_RE, assetLabel, resolveSymbol, searchSymbols, verifySymbol } from "./lib/symbols";
 import type { SymbolKind, SymbolMatch } from "./lib/symbols";
 import { computeMetrics, ema } from "./lib/analysis";
 import { fetchStooqDailyCloses, fetchStooqQuote } from "./lib/stooq";
 import { fetchCompanyNews, fetchGeneralNews, newsTickerForYahooSymbol } from "./lib/finnhub";
-import { fetchAllProviders } from "./lib/fetchers";
+import { DAILY_SOURCES, fetchAllProviders } from "./lib/fetchers";
+import { countSubrequests } from "./lib/subrequests";
 import { fetchNdxBreadth } from "./lib/breadth";
 import { WORLD_INDICES, getIndexMeta } from "./lib/world";
 
@@ -69,7 +72,6 @@ function err(msg: string, status = 400): Response {
 // ── Indicator metadata ────────────────────────────────────────────────────────
 const INDICATOR_NAMES: Record<string, string> = {
   us_high_yield_spread:    "US High Yield Option-Adjusted Spread",
-  bofa_bull_bear:          "Investor Sentiment Bull-Bear Spread",
   cnn_fear_greed_index:    "Fear & Greed Index",
   cnn_put_call_options:    "Put/Call Ratio (5-Day Average)",
   sp500_pe_ratio:          "S&P 500 Price-to-Earnings Ratio",
@@ -83,7 +85,6 @@ const INDICATOR_NAMES: Record<string, string> = {
 
 const INDICATOR_SOURCE_URLS: Record<string, string> = {
   us_high_yield_spread:   "https://fred.stlouisfed.org/series/BAMLH0A0HYM2",
-  bofa_bull_bear:         "https://ycharts.com/indicators/us_investor_sentiment_bull_bear_spread",
   cnn_fear_greed_index:   "https://edition.cnn.com/markets/fear-and-greed",
   cnn_put_call_options:   "https://edition.cnn.com/markets/fear-and-greed",
   sp500_pe_ratio:         "https://www.multpl.com/s-p-500-pe-ratio/table/by-month",
@@ -96,7 +97,6 @@ const INDICATOR_SOURCE_URLS: Record<string, string> = {
 };
 
 const INDICATOR_THRESHOLDS: Record<string, { top?: number; bottom?: number; top_zone?: number[] }> = {
-  bofa_bull_bear:         { top: 20.0, bottom: -20.0 },
   cnn_fear_greed_index:   { top: 75.0, bottom: 25.0 },
   cnn_put_call_options:   { top: 0.55, bottom: 0.95 },
   vix:                    { top: 14.0, bottom: 25.0 },
@@ -176,7 +176,36 @@ function normalizeStockSymbol(raw: string): string | null {
   return `${s}.US`;
 }
 
-// ── Market overview: fetch from Yahoo's chart API ────────────────────────────
+// ── Market overview: fetch from Yahoo ────────────────────────────────────────
+type MarketItem = { symbol: string; yahoo: string; name: string };
+const MARKET_ROW_FALLBACKS = 3;  // per-symbol chart calls allowed when spark skips a symbol
+
+/**
+ * Rows for many symbols with one spark request per 20 symbols (the 22
+ * defaults used to cost 22 requests). A symbol spark leaves out is retried
+ * with its own chart request, up to MARKET_ROW_FALLBACKS of them.
+ */
+async function buildMarketRows(items: MarketItem[]): Promise<Record<string, unknown>[]> {
+  let series = new Map<string, YahooChartPoint[]>();
+  try {
+    series = await fetchYahooSpark(items.map((i) => i.yahoo), "1y", "1d");
+  } catch (e) {
+    console.error("buildMarketRows: spark failed", e);
+  }
+  const rows: Record<string, unknown>[] = [];
+  const missing: MarketItem[] = [];
+  for (const item of items) {
+    const points = series.get(item.yahoo);
+    const row = points ? marketRowFromPoints(item, points) : null;
+    if (row) rows.push(row); else missing.push(item);
+  }
+  const retried = await Promise.allSettled(
+    missing.slice(0, MARKET_ROW_FALLBACKS).map((i) => buildMarketRow(i.symbol, i.yahoo, i.name)),
+  );
+  for (const r of retried) if (r.status === "fulfilled" && r.value) rows.push(r.value);
+  return rows;
+}
+
 async function buildMarketRow(
   symbol: string,
   yahooSym: string,
@@ -184,30 +213,33 @@ async function buildMarketRow(
 ): Promise<Record<string, unknown> | null> {
   try {
     const points = await fetchYahooChart(yahooSym, "1y", "1d");
-    if (!points.length) return null;
-    const latest = points[points.length - 1];
-    const close = latest.close;
-    const asOf = latest.date;
-
-    const w = points.length > 5  ? points[points.length - 6].close  : null;
-    const m = points.length > 21 ? points[points.length - 22].close : null;
-    const q = points.length > 63 ? points[points.length - 64].close : null;
-    // 1Y % vs oldest bar in Yahoo's `range=1y` window (≈ 252 trading days).
-    // Yahoo often returns 251 daily bars for US equities (^GSPC etc.), so a
-    // threshold of 252 would permanently blank the 1Y column — `points[0]` is
-    // always the window anchor for this fetch.
-    const y = points.length >= 2 ? points[0].close : null;
-
-    const pct = (prev: number | null) => prev ? Math.round((close / prev - 1) * 10000) / 100 : null;
-    return {
-      symbol, name: displayName, as_of: asOf, close,
-      chg_1w_pct: pct(w), chg_1m_pct: pct(m),
-      chg_3m_pct: pct(q), chg_1y_pct: pct(y),
-      source_url: `https://finance.yahoo.com/quote/${encodeURIComponent(yahooSym)}`,
-    };
+    return marketRowFromPoints({ symbol, yahoo: yahooSym, name: displayName }, points);
   } catch {
     return null;
   }
+}
+
+function marketRowFromPoints(item: MarketItem, points: YahooChartPoint[]): Record<string, unknown> | null {
+  if (!points.length) return null;
+  const latest = points[points.length - 1];
+  const close = latest.close;
+
+  const w = points.length > 5  ? points[points.length - 6].close  : null;
+  const m = points.length > 21 ? points[points.length - 22].close : null;
+  const q = points.length > 63 ? points[points.length - 64].close : null;
+  // 1Y % vs oldest bar in Yahoo's `range=1y` window (≈ 252 trading days).
+  // Yahoo often returns 251 daily bars for US equities (^GSPC etc.), so a
+  // threshold of 252 would permanently blank the 1Y column — `points[0]` is
+  // always the window anchor for this fetch.
+  const y = points.length >= 2 ? points[0].close : null;
+
+  const pct = (prev: number | null) => prev ? Math.round((close / prev - 1) * 10000) / 100 : null;
+  return {
+    symbol: item.symbol, name: item.name, as_of: latest.date, close,
+    chg_1w_pct: pct(w), chg_1m_pct: pct(m),
+    chg_3m_pct: pct(q), chg_1y_pct: pct(y),
+    source_url: `https://finance.yahoo.com/quote/${encodeURIComponent(item.yahoo)}`,
+  };
 }
 
 // ── Watchlist defaults (page 05) ─────────────────────────────────────────────
@@ -408,21 +440,72 @@ async function scoreWatchlist(
   };
 }
 
-async function refreshWatchlistMetrics(env: Env): Promise<number> {
+// Shared-watchlist pacing for the */30 cron. Each symbol costs one Yahoo
+// chart request (OHLCV has no batch endpoint), so a run refreshes at most
+// WATCHLIST_REFRESH_MAX symbols, stalest first, and a longer list simply
+// takes more than one run. Daily bars only move while the US market is open;
+// outside that window each symbol is refreshed every 6 hours, which keeps the
+// cached rows well under the 24 hours /api/watchlist accepts.
+const WATCHLIST_REFRESH_MAX = 20;
+const WATCHLIST_MIN_AGE_OPEN_SEC = 25 * 60;
+const WATCHLIST_MIN_AGE_CLOSED_SEC = 6 * 3600;
+
+/** Mon–Fri 09:00–17:00 New York time: the session plus the first run after the close. */
+function usMarketWindowOpen(now = new Date()): boolean {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(now).map((p) => [p.type, p.value]),
+  );
+  if (parts.weekday === "Sat" || parts.weekday === "Sun") return false;
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  return minutes >= 9 * 60 && minutes < 17 * 60;
+}
+
+async function refreshWatchlistMetrics(
+  env: Env,
+  pace?: { max: number; minAgeSec: number },
+): Promise<{ wrote: number; due: number; total: number }> {
   const wl = await getWatchlist(env.DB);
-  if (!wl.length) return 0;
+  if (!wl.length) return { wrote: 0, due: 0, total: 0 };
+  let targets = wl;
+  if (pace) {
+    const ages = await getWatchlistMetricAges(env.DB, wl.map((w) => w.symbol));
+    const age = (symbol: string) => ages[symbol] ?? Infinity;
+    targets = wl
+      .filter((w) => age(w.symbol) >= pace.minAgeSec)
+      .sort((a, b) => age(b.symbol) - age(a.symbol))
+      .slice(0, pace.max);
+  }
   const settled = await Promise.allSettled(
-    wl.map((w) => buildWatchMetrics(w.symbol, w.name)),
+    targets.map((w) => buildWatchMetrics(w.symbol, w.name)),
   );
   const out: Array<{ symbol: string; focus_score: number; payload: unknown }> = [];
   for (let i = 0; i < settled.length; i++) {
     const r = settled[i];
     if (r.status === "fulfilled" && r.value) {
-      out.push({ symbol: wl[i].symbol, focus_score: r.value.focus_score ?? 0, payload: r.value });
+      out.push({ symbol: targets[i].symbol, focus_score: r.value.focus_score ?? 0, payload: r.value });
     }
   }
   if (out.length) await upsertWatchlistMetrics(env.DB, out);
-  return out.length;
+  return { wrote: out.length, due: targets.length, total: wl.length };
+}
+
+// Daily sources (FRED, the two PE pages) are fetched by the */30 cron at most
+// this often; the time of each one's last successful fetch lives in kv_store.
+const DAILY_SOURCE_HOURS = 6;
+const DAILY_SOURCE_KEY = "providers:last_ok";
+
+async function readJsonKv(env: Env, key: string): Promise<Record<string, number>> {
+  const row = await env.DB.prepare("SELECT value FROM kv_store WHERE key = ?").bind(key).first<{ value: string }>();
+  try { return row ? JSON.parse(row.value) as Record<string, number> : {}; } catch { return {}; }
+}
+
+async function writeJsonKv(env: Env, key: string, value: unknown): Promise<void> {
+  await env.DB.prepare(
+    "INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, datetime('now')) " +
+      "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+  ).bind(key, JSON.stringify(value)).run();
 }
 
 // ── After-close jobs (second cron trigger) ───────────────────────────────────
@@ -629,16 +712,10 @@ export default {
         return !row || stale(sym, row);
       });
       if (missingSymbols.length > 0) {
-        const fetched = await Promise.allSettled(
-          missingSymbols.map(([sym, plan]) => buildMarketRow(sym, plan.yahoo, plan.name)),
+        const newRows = await buildMarketRows(
+          missingSymbols.map(([sym, plan]) => ({ symbol: sym, yahoo: plan.yahoo, name: plan.name })),
         );
-        const newRows: Record<string, unknown>[] = [];
-        for (const r of fetched) {
-          if (r.status === "fulfilled" && r.value) {
-            newRows.push(r.value);
-            dbMap.set(String(r.value.symbol).toLowerCase(), r.value);
-          }
-        }
+        for (const row of newRows) dbMap.set(String(row.symbol).toLowerCase(), row);
         if (newRows.length) {
           // Cloudflare Workers terminate in-flight async work once the
           // Response is returned unless it's wrapped in ctx.waitUntil.
@@ -949,7 +1026,7 @@ export default {
     if (pathname === "/api/watchlist/refresh" && request.method === "POST") {
       const denied = await requireAdmin(request, env);
       if (denied) return denied;
-      const wrote = await refreshWatchlistMetrics(env);
+      const { wrote } = await refreshWatchlistMetrics(env);
       return json({ ok: true, wrote });
     }
 
@@ -1157,15 +1234,7 @@ export default {
       // forward in addition to the macro indicators.
       let marketWrote = 0;
       try {
-        const settled = await Promise.allSettled(
-          DEFAULT_ITEMS.map((item) =>
-            buildMarketRow(item.symbol, item.yahoo, item.name),
-          ),
-        );
-        const freshRows: Record<string, unknown>[] = [];
-        for (const r of settled) {
-          if (r.status === "fulfilled" && r.value) freshRows.push(r.value);
-        }
+        const freshRows = await buildMarketRows(DEFAULT_ITEMS);
         if (freshRows.length) {
           await upsertMarketOverviewRows(env.DB, freshRows);
           marketWrote = freshRows.length;
@@ -1199,12 +1268,15 @@ export default {
 
   // ── Cron Trigger ─────────────────────────────────────────────────────────
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Each run logs its outbound requests against the free plan's 50.
+    const logRequests = (label: string) => ({ requests }: { requests: number | null }) =>
+      console.log(`${label}: outbound requests=${requests ?? "n/a"}/50`);
     if (controller.cron === AFTER_CLOSE_CRON) {
-      ctx.waitUntil(runAfterCloseJobs(env));
+      ctx.waitUntil(countSubrequests(() => runAfterCloseJobs(env)).then(logRequests("after-close")));
       return;
     }
     ctx.waitUntil(
-      (async () => {
+      countSubrequests(async () => {
         const t0 = Date.now();
         console.log(`scheduled: tick @ ${new Date().toISOString()}`);
 
@@ -1221,13 +1293,22 @@ export default {
           console.error("scheduled: setLastCronRun (early) failed", e);
         }
 
-        // 2) Pull every macro provider into D1 (best-effort).
+        // 2) Pull every macro provider into D1 (best-effort). Daily sources
+        //    are skipped until DAILY_SOURCE_HOURS after their last success.
         try {
-          const { ok, err, observations } = await fetchAllProviders(env);
+          const lastOk = await readJsonKv(env, DAILY_SOURCE_KEY).catch(() => ({} as Record<string, number>));
+          const due = (name: string) =>
+            !DAILY_SOURCES.has(name) || Date.now() - (lastOk[name] ?? 0) >= DAILY_SOURCE_HOURS * 3600_000;
+          const { ok, err, observations, counts } = await fetchAllProviders(env, due);
           await upsertObservations(env.DB, observations);
+          const fetchedDaily = [...DAILY_SOURCES].filter((name) => (counts[name] ?? 0) > 0);
+          if (fetchedDaily.length) {
+            for (const name of fetchedDaily) lastOk[name] = Date.now();
+            await writeJsonKv(env, DAILY_SOURCE_KEY, lastOk);
+          }
           console.log(
             `scheduled: providers ok=${ok.length} err=${err.length} ` +
-              `wrote=${observations.length} (+${Date.now() - t0}ms)`,
+              `wrote=${observations.length} daily=[${Object.keys(counts).filter((n) => DAILY_SOURCES.has(n)).join(",")}] (+${Date.now() - t0}ms)`,
           );
           if (err.length) console.error("scheduled: provider errors:", err);
         } catch (e) {
@@ -1246,15 +1327,7 @@ export default {
         //    the first-ever snapshot — the endpoint only re-fetches *missing*
         //    symbols, so rows never age forward until a user hits Reload.
         try {
-          const rows = await Promise.allSettled(
-            DEFAULT_ITEMS.map((item) =>
-              buildMarketRow(item.symbol, item.yahoo, item.name),
-            ),
-          );
-          const fresh: Record<string, unknown>[] = [];
-          for (const r of rows) {
-            if (r.status === "fulfilled" && r.value) fresh.push(r.value);
-          }
+          const fresh = await buildMarketRows(DEFAULT_ITEMS);   // 2 requests for the 22 rows
           if (fresh.length) await upsertMarketOverviewRows(env.DB, fresh);
           console.log(
             `scheduled: market_overview wrote=${fresh.length} ` +
@@ -1268,8 +1341,12 @@ export default {
         //     "Special Focus" list surface volume surges, pattern breakouts,
         //     etc. without the user having to open the page first.
         try {
-          const n = await refreshWatchlistMetrics(env);
-          console.log(`scheduled: watchlist wrote=${n} (+${Date.now() - t0}ms)`);
+          const open = usMarketWindowOpen();
+          const r = await refreshWatchlistMetrics(env, {
+            max: WATCHLIST_REFRESH_MAX,
+            minAgeSec: open ? WATCHLIST_MIN_AGE_OPEN_SEC : WATCHLIST_MIN_AGE_CLOSED_SEC,
+          });
+          console.log(`scheduled: watchlist wrote=${r.wrote}/${r.due} of ${r.total} (${open ? "market open" : "market closed"}) (+${Date.now() - t0}ms)`);
         } catch (e) {
           console.error("scheduled: watchlist refresh failed", e);
         }
@@ -1301,7 +1378,7 @@ export default {
         }
 
         console.log(`scheduled: done in ${Date.now() - t0}ms`);
-      })(),
+      }).then(logRequests("scheduled")),
     );
   },
 } satisfies ExportedHandler<Env>;

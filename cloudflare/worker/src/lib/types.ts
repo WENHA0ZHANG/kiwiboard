@@ -67,7 +67,6 @@ export const ALL_INDICATOR_IDS = [
   "cnn_fear_greed_index",
   "cnn_put_call_options",
   "vix",
-  "bofa_bull_bear",
   "sp500_rsi",
   "sp500_pe_ratio",
   "nasdaq100_pe_ratio",

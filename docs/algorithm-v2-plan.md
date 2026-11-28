@@ -277,6 +277,18 @@
   - 回测脚本已整理到 `research/backtest/`。
   - AAII 停用：两个能拿到数据的网站都屏蔽了脚本访问，不应该绕过。以后如果需要，可以改成手动录入。
   - 注意：线上每 30 分钟的任务大约要发 46–48 个外部请求，接近免费版 50 个的上限。第 1 步新增的数据源必须放进收盘后的任务。另一个办法是把市场行情的 22 次请求改用 spark 接口，只需 2 次。
+- **补充（2026-11-28，约 08:27 UTC 部署）**：
+  - 线上版本：Worker `fffe2340`，Pages `5203c739`。
+  - 回滚：Worker `574a2b44`，Pages `dbd733c3`。
+  - 部署前的工作区已备份到分支 `backup/pre-request-savings-2026-11-28`。
+  - 部署后 07:30 那次运行正好用了 50 个请求：指标 10 个（FRED 的代理失败后改走直连接口），市场行情 22 个，自选股 18 个。
+  - 省请求：
+    - 22 行市场行情和 VIX、SKEW、RSI 都改用 spark（`fetchYahooSpark`）。
+    - FRED 和两个 PE 每 6 小时最多抓一次，记录在 kv `providers:last_ok`。
+    - 自选股每次最多刷新 20 只，优先最久没更新的；休市时 6 小时刷新一次。
+    - 每次运行在日志里打印 `outbound requests=N/50`（`lib/subrequests.ts`）。
+  - 本地实测：第一次运行 10 个请求，自选股全部需要刷新时 21 个。和线上对比，22 行行情里 21 行一致，BTC 因为是实时价格而不同；VIX、SKEW、RSI 完全一致。
+  - AAII 已从模型和页面上完全去掉：权重表、历史对照表的那一列、页脚链接、Key Indicators、Signals 都删了。D1 里的历史数据保留。
 
 **第 1 步：Regime v2 影子运行（1–2 天开发，观察 2–4 周）**
 - `regime.ts` 加一个 `computeMarketRegimeV2`；`fetchers.ts` 加 DFII10、DGS10、NFCI、`^MOVE`，以及广度的 50 日均线版本。

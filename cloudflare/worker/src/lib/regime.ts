@@ -10,7 +10,6 @@ const WEIGHTS: Record<string, number> = {
   cnn_put_call_options: 1.0,
   nasdaq100_above_20d_ma: 1.0,
   yc_10y_2y: 1.0,
-  bofa_bull_bear: 0.7,
   sp500_rsi: 0.7,
   nasdaq100_pe_ratio: 0.7,
   cboe_skew: 0.6,
@@ -63,14 +62,6 @@ function scoreOne(
     if (v < 0.50)  return c("Put/Call (5d)", v, "", -2, `P/C ${v.toFixed(2)} < 0.50 extreme call greed`);
     if (v < 0.55)  return c("Put/Call (5d)", v, "", -1, `P/C ${v.toFixed(2)} < 0.55 call greed`);
     return c("Put/Call (5d)", v, "", 0, "P/C in normal range");
-  }
-
-  if (id === "bofa_bull_bear") {
-    if (v <= -30) return c("AAII Bull-Bear", v, "%", +2, `${v.toFixed(1)}% ≤ −30 deep bearish sentiment`);
-    if (v <= -20) return c("AAII Bull-Bear", v, "%", +1, `${v.toFixed(1)}% ≤ −20 bearish sentiment`);
-    if (v >= 30)  return c("AAII Bull-Bear", v, "%", -2, `${v.toFixed(1)}% ≥ +30 deep bullish sentiment`);
-    if (v >= 20)  return c("AAII Bull-Bear", v, "%", -1, `${v.toFixed(1)}% ≥ +20 bullish sentiment`);
-    return c("AAII Bull-Bear", v, "%", 0, "Sentiment in normal range");
   }
 
   if (id === "sp500_rsi") {

@@ -1962,7 +1962,6 @@
                 <tr><td>1.0</td><td>Put/Call</td><td>Options-flow sentiment</td></tr>
                 <tr><td>1.0</td><td>NDX &gt; 20d MA</td><td>Market breadth</td></tr>
                 <tr><td>1.0</td><td>10Y-2Y Curve</td><td>Macro late-cycle</td></tr>
-                <tr><td>0.7</td><td>AAII Bull-Bear</td><td>Noisy weekly survey</td></tr>
                 <tr><td>0.7</td><td>S&amp;P 500 RSI</td><td>Price momentum</td></tr>
                 <tr><td>0.7</td><td>NDX 100 PE</td><td>Less standard</td></tr>
                 <tr><td>0.6</td><td>CBOE SKEW</td><td>Indirect, top ≥155 / bottom ≤135</td></tr>
@@ -2017,25 +2016,24 @@
               <th style="width: 12%; text-align: center;">Peak Date</th>
               <th style="width: 12%; text-align: center;">Trough Date</th>
               <th style="width: 8%; text-align: center;">Drawdown</th>
-              <th style="width: 13%; text-align: center;">High Yield(T/B)</th>
-              <th style="width: 13%; text-align: center;">Bull-Bear(T/B)</th>
-              <th style="width: 13%; text-align: center;">Fear &amp; Greed(T/B)</th>
-              <th style="width: 13%; text-align: center;">S&amp;P500 PE(T/B)</th>
+              <th style="width: 17%; text-align: center;">High Yield(T/B)</th>
+              <th style="width: 17%; text-align: center;">Fear &amp; Greed(T/B)</th>
+              <th style="width: 18%; text-align: center;">S&amp;P500 PE(T/B)</th>
             </tr>
           </thead>
           <tbody>
-              <tr><td>Dot-com Bubble Burst</td><td style="text-align:center">2000-03-24</td><td style="text-align:center">2002-10-09</td><td style="color:var(--bear);font-weight:bold;text-align:center">-49.1%</td><td style="text-align:center">3.78% / 10.97%</td><td style="text-align:center">25.0% / -25.0%</td><td style="text-align:center">— / —</td><td style="text-align:center">28.0x / 32.0x</td></tr>
-              <tr><td>2008 Global Financial Crisis</td><td style="text-align:center">2007-10-09</td><td style="text-align:center">2009-03-09</td><td style="color:var(--bear);font-weight:bold;text-align:center">-56.8%</td><td style="text-align:center">3.78% / 19.66%</td><td style="text-align:center">23.0% / -51.0%</td><td style="text-align:center">— / —</td><td style="text-align:center">22.0x / 110.0x</td></tr>
-              <tr><td>2011 US Debt Ceiling / Eurozone Crisis</td><td style="text-align:center">2011-04-29</td><td style="text-align:center">2011-10-03</td><td style="color:var(--bear);font-weight:bold;text-align:center">-19.4%</td><td style="text-align:center">4.39% / 8.87%</td><td style="text-align:center">12.0% / -25.0%</td><td style="text-align:center">— / —</td><td style="text-align:center">16.0x / 13.0x</td></tr>
-              <tr><td>2018 Q4 Trade War / Fed Tightening</td><td style="text-align:center">2018-09-20</td><td style="text-align:center">2018-12-24</td><td style="color:var(--bear);font-weight:bold;text-align:center">-19.8%</td><td style="text-align:center">3.16% / 5.34%</td><td style="text-align:center">23.0% / -29.0%</td><td style="text-align:center">80.0 / 3.0</td><td style="text-align:center">21.0x / 17.5x</td></tr>
-              <tr><td>2020 COVID-19 Crash</td><td style="text-align:center">2020-02-19</td><td style="text-align:center">2020-03-23</td><td style="color:var(--bear);font-weight:bold;text-align:center">-33.9%</td><td style="text-align:center">3.59% / 10.87%</td><td style="text-align:center">13.0% / -20.0%</td><td style="text-align:center">58.0 / 3.0</td><td style="text-align:center">25.0x / 19.0x</td></tr>
-              <tr><td>2022 Inflation / Rate Hike Bear</td><td style="text-align:center">2022-01-03</td><td style="text-align:center">2022-10-12</td><td style="color:var(--bear);font-weight:bold;text-align:center">-25.4%</td><td style="text-align:center">3.05% / 5.23%</td><td style="text-align:center">-6.0% / -35.0%</td><td style="text-align:center">52.0 / 17.0</td><td style="text-align:center">28.0x / 19.0x</td></tr>
-              <tr><td>2024.08 Yen Carry Trade Unwind</td><td style="text-align:center">2024-07-16</td><td style="text-align:center">2024-08-05</td><td style="color:var(--bear);font-weight:bold;text-align:center">-8.5%</td><td style="text-align:center">3.05% / 3.81%</td><td style="text-align:center">30.0% / -5.0%</td><td style="text-align:center">56.0 / 25.0</td><td style="text-align:center">28.5x / 26.0x</td></tr>
-              <tr><td>2025.04 Tariff Shock</td><td style="text-align:center">2025-02-19</td><td style="text-align:center">2025-04-08</td><td style="color:var(--bear);font-weight:bold;text-align:center">-18.9%</td><td style="text-align:center">2.84% / 4.61%</td><td style="text-align:center">-12.0% / -38.0%</td><td style="text-align:center">50.0 / 4.0</td><td style="text-align:center">30.0x / 23.0x</td></tr>
+              <tr><td>Dot-com Bubble Burst</td><td style="text-align:center">2000-03-24</td><td style="text-align:center">2002-10-09</td><td style="color:var(--bear);font-weight:bold;text-align:center">-49.1%</td><td style="text-align:center">3.78% / 10.97%</td><td style="text-align:center">— / —</td><td style="text-align:center">28.0x / 32.0x</td></tr>
+              <tr><td>2008 Global Financial Crisis</td><td style="text-align:center">2007-10-09</td><td style="text-align:center">2009-03-09</td><td style="color:var(--bear);font-weight:bold;text-align:center">-56.8%</td><td style="text-align:center">3.78% / 19.66%</td><td style="text-align:center">— / —</td><td style="text-align:center">22.0x / 110.0x</td></tr>
+              <tr><td>2011 US Debt Ceiling / Eurozone Crisis</td><td style="text-align:center">2011-04-29</td><td style="text-align:center">2011-10-03</td><td style="color:var(--bear);font-weight:bold;text-align:center">-19.4%</td><td style="text-align:center">4.39% / 8.87%</td><td style="text-align:center">— / —</td><td style="text-align:center">16.0x / 13.0x</td></tr>
+              <tr><td>2018 Q4 Trade War / Fed Tightening</td><td style="text-align:center">2018-09-20</td><td style="text-align:center">2018-12-24</td><td style="color:var(--bear);font-weight:bold;text-align:center">-19.8%</td><td style="text-align:center">3.16% / 5.34%</td><td style="text-align:center">80.0 / 3.0</td><td style="text-align:center">21.0x / 17.5x</td></tr>
+              <tr><td>2020 COVID-19 Crash</td><td style="text-align:center">2020-02-19</td><td style="text-align:center">2020-03-23</td><td style="color:var(--bear);font-weight:bold;text-align:center">-33.9%</td><td style="text-align:center">3.59% / 10.87%</td><td style="text-align:center">58.0 / 3.0</td><td style="text-align:center">25.0x / 19.0x</td></tr>
+              <tr><td>2022 Inflation / Rate Hike Bear</td><td style="text-align:center">2022-01-03</td><td style="text-align:center">2022-10-12</td><td style="color:var(--bear);font-weight:bold;text-align:center">-25.4%</td><td style="text-align:center">3.05% / 5.23%</td><td style="text-align:center">52.0 / 17.0</td><td style="text-align:center">28.0x / 19.0x</td></tr>
+              <tr><td>2024.08 Yen Carry Trade Unwind</td><td style="text-align:center">2024-07-16</td><td style="text-align:center">2024-08-05</td><td style="color:var(--bear);font-weight:bold;text-align:center">-8.5%</td><td style="text-align:center">3.05% / 3.81%</td><td style="text-align:center">56.0 / 25.0</td><td style="text-align:center">28.5x / 26.0x</td></tr>
+              <tr><td>2025.04 Tariff Shock</td><td style="text-align:center">2025-02-19</td><td style="text-align:center">2025-04-08</td><td style="color:var(--bear);font-weight:bold;text-align:center">-18.9%</td><td style="text-align:center">2.84% / 4.61%</td><td style="text-align:center">50.0 / 4.0</td><td style="text-align:center">30.0x / 23.0x</td></tr>
           </tbody>
         </table>
         </div>
-        <div class="empty">Note: Historical comparison table is a hardcoded snapshot (for comparison and rule backtesting), data compiled from Federal Reserve FRED (HY Spread), AAII (Sentiment), CNN (Fear & Greed), Multpl (SP500 PE). CNN data not available before 2012.</div>
+        <div class="empty">Note: Historical comparison table is a hardcoded snapshot (for comparison and rule backtesting), data compiled from Federal Reserve FRED (HY Spread), CNN (Fear & Greed), Multpl (SP500 PE). CNN data not available before 2012.</div>
       </div>
       </section>
 
@@ -2262,7 +2260,7 @@
         // Short indicator names for phone rows (same as the regime drivers).
         const IND_SHORT = {
           vix: "VIX", cnn_fear_greed_index: "Fear & Greed", cnn_put_call_options: "Put/Call (5d)",
-          bofa_bull_bear: "AAII Bull-Bear", sp500_rsi: "S&P 500 RSI", us_high_yield_spread: "HY OAS",
+          sp500_rsi: "S&P 500 RSI", us_high_yield_spread: "HY OAS",
           nasdaq100_above_20d_ma: "NDX > 20d MA", sp500_pe_ratio: "S&P 500 PE",
           nasdaq100_pe_ratio: "NDX 100 PE", cboe_skew: "CBOE SKEW", yc_10y_2y: "10Y-2Y Curve",
         };
@@ -6078,7 +6076,6 @@
         <div class="footer-sources">
           Indicator Sources:
           <a href="https://tradingeconomics.com/united-states/bofa-merrill-lynch-us-high-yield-option-adjusted-spread-fed-data.html" target="_blank" rel="noopener">US HY OAS</a> /
-          <a href="https://ycharts.com/indicators/us_investor_sentiment_bull_bear_spread" target="_blank" rel="noopener">AAII Bull-Bear</a> /
           <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank" rel="noopener">CNN Fear &amp; Greed</a> /
           <a href="https://www.multpl.com/s-p-500-pe-ratio/table/by-month" target="_blank" rel="noopener">S&amp;P 500 PE</a> /
           <a href="https://worldperatio.com/index/nasdaq-100/" target="_blank" rel="noopener">Nasdaq 100 PE</a> /

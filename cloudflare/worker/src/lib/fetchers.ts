@@ -7,7 +7,7 @@
  * fall back to simpler HTML/API sources that work from a Worker.
  */
 import type { Observation } from "./types";
-import { fetchYahooChart } from "./yahoo";
+import { fetchYahooSpark } from "./yahoo";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -194,24 +194,6 @@ export async function fetchYieldCurve(fredApiKey?: string): Promise<Observation[
   return toFredObservations(rows, "yc_10y_2y", "percent", "FRED:T10Y2Y", 1);
 }
 
-// ── VIX from Yahoo Finance ──────────────────────────────────────────────────
-export async function fetchVix(): Promise<Observation[]> {
-  const points = await fetchYahooChart("^VIX", "5d", "1d");
-  const out: Observation[] = [];
-  for (const p of points.slice(-3)) {
-    out.push({
-      indicator_id: "vix",
-      as_of: p.date,
-      value: p.close,
-      unit: "index",
-      source: "Yahoo:^VIX",
-      meta_json: null,
-      inserted_at: today(),
-    });
-  }
-  return out;
-}
-
 // ── S&P 500 RSI from Yahoo Finance ──────────────────────────────────────────
 // Wilder's smoothed RSI: seed with simple averages over the first `period`
 // daily up/down moves, then apply Wilder smoothing for every later point.
@@ -241,38 +223,27 @@ function computeRsi(closes: number[], period = 14): number | null {
   return Math.round((100 - 100 / (1 + rs)) * 100) / 100;
 }
 
-export async function fetchSp500Rsi(): Promise<Observation[]> {
-  // Fetch 1y so Wilder smoothing has plenty of history to converge to the
-  // standard "RSI(14)" value reported on Yahoo / TradingView.
-  const points = await fetchYahooChart("^GSPC", "1y", "1d");
-  if (points.length < 30) return [];
-  const closes = points.map((p) => p.close);
-  const rsi = computeRsi(closes, 14);
-  if (rsi == null) return [];
-  return [{
-    indicator_id: "sp500_rsi",
-    as_of: points[points.length - 1].date,
-    value: rsi,
-    unit: "0-100",
-    source: "Yahoo:^GSPC/RSI14",
-    meta_json: null,
-    inserted_at: today(),
-  }];
-}
-
-// ── CBOE SKEW from Yahoo Finance ─────────────────────────────────────────────
-export async function fetchCboeSkew(): Promise<Observation[]> {
-  const points = await fetchYahooChart("^SKEW", "5d", "1d");
+// VIX, CBOE SKEW and the S&P 500 RSI come from one spark request (they used
+// to take three); the free plan allows 50 outbound requests per cron run.
+export async function fetchYahooIndexIndicators(): Promise<Observation[]> {
+  const series = await fetchYahooSpark(["^VIX", "^SKEW", "^GSPC"], "1y", "1d");
+  const insertedAt = today();
   const out: Observation[] = [];
-  for (const p of points.slice(-3)) {
+  for (const [symbol, id] of [["^VIX", "vix"], ["^SKEW", "cboe_skew"]] as const) {
+    for (const p of (series.get(symbol) ?? []).slice(-3)) {
+      out.push({
+        indicator_id: id, as_of: p.date, value: p.close, unit: "index",
+        source: `Yahoo:${symbol}`, meta_json: null, inserted_at: insertedAt,
+      });
+    }
+  }
+  // A year of closes so Wilder smoothing converges to the usual RSI(14).
+  const spx = series.get("^GSPC") ?? [];
+  const rsi = spx.length >= 30 ? computeRsi(spx.map((p) => p.close), 14) : null;
+  if (rsi != null) {
     out.push({
-      indicator_id: "cboe_skew",
-      as_of: p.date,
-      value: p.close,
-      unit: "index",
-      source: "Yahoo:^SKEW",
-      meta_json: null,
-      inserted_at: today(),
+      indicator_id: "sp500_rsi", as_of: spx[spx.length - 1].date, value: rsi, unit: "0-100",
+      source: "Yahoo:^GSPC/RSI14", meta_json: null, inserted_at: insertedAt,
     });
   }
   return out;
@@ -532,23 +503,29 @@ export async function fetchNasdaq100Pe(): Promise<Observation[]> {
 }
 
 // ── Run all fetchable providers ──────────────────────────────────────────────
-export async function fetchAllProviders(env: {
-  FRED_API_KEY?: string;
-}): Promise<{ ok: string[]; err: string[]; observations: Observation[] }> {
+// Sources that change at most once a day. The */30 cron fetches them only
+// when they are due (see DAILY_SOURCE_HOURS in index.ts), which saves 4–8 of
+// its 50 outbound requests on most runs. A failed fetch is due again on the
+// next run.
+export const DAILY_SOURCES: ReadonlySet<string> = new Set(["sp500_pe", "ndx_pe", "hy_oas", "yc_10y2y"]);
+
+export async function fetchAllProviders(
+  env: { FRED_API_KEY?: string },
+  due: (name: string) => boolean = () => true,
+): Promise<{ ok: string[]; err: string[]; observations: Observation[]; counts: Record<string, number> }> {
   const ok: string[] = [];
   const err: string[] = [];
   const observations: Observation[] = [];
+  const counts: Record<string, number> = {};
 
   const tasks: Array<[string, () => Promise<Observation[]>]> = [
     ["cnn",            fetchCnnFearGreed],
-    ["vix",            fetchVix],
-    ["sp500_rsi",      fetchSp500Rsi],
-    ["cboe_skew",      fetchCboeSkew],
+    ["vix_skew_rsi",   fetchYahooIndexIndicators],
     ["sp500_pe",       fetchSp500Pe],
     ["ndx_pe",         fetchNasdaq100Pe],
     // Retired 2026-11-28: Barchart ($NDTW) and YCharts (AAII) stopped serving
     // scripts. NDX breadth is now computed from Yahoo in the after-close cron
-    // (lib/breadth.ts); AAII has no replacement yet and ages out of the score.
+    // (lib/breadth.ts); AAII was dropped from the model (history stays in D1).
     // FRED CSV endpoint requires no key. We pass the key anyway so a
     // future opt-in can switch back to the JSON API via fetchFredJson().
     ["hy_oas",         () => fetchHyOas(env.FRED_API_KEY)],
@@ -559,16 +536,17 @@ export async function fetchAllProviders(env: {
   // Previously we did them sequentially which added up to ~60s and
   // occasionally pushed the scheduled run past Workers' budget.
   const results = await Promise.allSettled(
-    tasks.map(async ([name, fn]) => ({ name, obs: await fn() })),
+    tasks.filter(([name]) => due(name)).map(async ([name, fn]) => ({ name, obs: await fn() })),
   );
   for (const r of results) {
     if (r.status === "fulfilled") {
       observations.push(...r.value.obs);
+      counts[r.value.name] = r.value.obs.length;
       ok.push(`${r.value.name}: ${r.value.obs.length} records`);
     } else {
       err.push(`unknown: ${String(r.reason)}`);
     }
   }
 
-  return { ok, err, observations };
+  return { ok, err, observations, counts };
 }

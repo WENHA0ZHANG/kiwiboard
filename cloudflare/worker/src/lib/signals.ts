@@ -11,20 +11,7 @@ export function computeSignals(
 ): Signal[] {
   const out: Signal[] = [];
 
-  // 1) AAII Bull-Bear Spread
-  const bb = latest["bofa_bull_bear"];
-  if (bb) {
-    const v = bb.value;
-    out.push({
-      indicator_id: "bofa_bull_bear",
-      top: v >= 20,
-      bottom: v <= -20,
-      title: "Investor Sentiment Bull-Bear Spread",
-      detail: `${v.toFixed(2)}% (≥ +20 top sentiment; ≤ −20 bottom sentiment)`,
-    });
-  }
-
-  // 2) CNN Fear & Greed
+  // 1) CNN Fear & Greed
   const fg = latest["cnn_fear_greed_index"];
   if (fg) {
     const v = fg.value;
@@ -40,7 +27,7 @@ export function computeSignals(
     });
   }
 
-  // 3) CNN Put/Call
+  // 2) CNN Put/Call
   const pc = latest["cnn_put_call_options"];
   if (pc) {
     const v = pc.value;
@@ -53,7 +40,7 @@ export function computeSignals(
     });
   }
 
-  // 4) VIX
+  // 3) VIX
   const vix = latest["vix"];
   if (vix) {
     const v = vix.value;
@@ -66,7 +53,7 @@ export function computeSignals(
     });
   }
 
-  // 5) S&P 500 RSI
+  // 4) S&P 500 RSI
   const rsi = latest["sp500_rsi"];
   if (rsi) {
     const v = rsi.value;
@@ -79,7 +66,7 @@ export function computeSignals(
     });
   }
 
-  // 6) S&P 500 PE
+  // 5) S&P 500 PE
   const sppe = latest["sp500_pe_ratio"];
   if (sppe) {
     const v = sppe.value;
@@ -92,7 +79,7 @@ export function computeSignals(
     });
   }
 
-  // 7) Nasdaq 100 PE
+  // 6) Nasdaq 100 PE
   const ndxpe = latest["nasdaq100_pe_ratio"];
   if (ndxpe) {
     const v = ndxpe.value;
@@ -105,7 +92,7 @@ export function computeSignals(
     });
   }
 
-  // 8) Nasdaq 100 > 20d MA
+  // 7) Nasdaq 100 > 20d MA
   const ndtw = latest["nasdaq100_above_20d_ma"];
   if (ndtw) {
     const v = ndtw.value;
@@ -118,7 +105,7 @@ export function computeSignals(
     });
   }
 
-  // 9) HY OAS
+  // 8) HY OAS
   const hy = latest["us_high_yield_spread"];
   if (hy) {
     const raw = hy.value;
@@ -133,7 +120,7 @@ export function computeSignals(
     });
   }
 
-  // 10) CBOE SKEW
+  // 9) CBOE SKEW
   const skew = latest["cboe_skew"];
   if (skew) {
     const v = skew.value;
@@ -146,7 +133,7 @@ export function computeSignals(
     });
   }
 
-  // 11) 10Y-2Y Yield Curve
+  // 10) 10Y-2Y Yield Curve
   const yc = latest["yc_10y_2y"];
   if (yc) {
     const v = yc.value;

@@ -5,7 +5,7 @@ import type { Observation } from "./types";
 // Before this guard the regime kept scoring whatever row was newest, so a
 // source that broke (Barchart in September 2026, YCharts in August) went
 // unnoticed for months. Daily series allow a long weekend plus a holiday and
-// a late publisher; the AAII survey is weekly.
+// a late publisher.
 export const MAX_AGE_DAYS: Record<string, number> = {
   vix: 6,
   cnn_fear_greed_index: 6,
@@ -17,7 +17,6 @@ export const MAX_AGE_DAYS: Record<string, number> = {
   yc_10y_2y: 7,
   sp500_pe_ratio: 10,
   nasdaq100_pe_ratio: 10,
-  bofa_bull_bear: 14,        // weekly survey
 };
 const DEFAULT_MAX_AGE_DAYS = 7;
 

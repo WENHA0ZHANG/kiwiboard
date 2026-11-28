@@ -342,6 +342,26 @@ export async function getWatchlistMetricsFor(
   return { map, ageSec, freshest };
 }
 
+/** Seconds since each symbol's metrics were computed (missing = never). */
+export async function getWatchlistMetricAges(
+  db: D1Database,
+  symbols: string[],
+): Promise<Record<string, number>> {
+  const ages: Record<string, number> = {};
+  for (let i = 0; i < symbols.length; i += 90) {
+    const chunk = symbols.slice(i, i + 90);
+    const rows = await db
+      .prepare(`SELECT symbol, computed_at FROM watchlist_metrics WHERE symbol IN (${chunk.map(() => "?").join(",")})`)
+      .bind(...chunk)
+      .all<{ symbol: string; computed_at: string }>();
+    for (const r of rows.results) {
+      const t = new Date(r.computed_at).getTime();
+      if (Number.isFinite(t)) ages[r.symbol] = (Date.now() - t) / 1000;
+    }
+  }
+  return ages;
+}
+
 export async function upsertWatchlistMetrics(
   db: D1Database,
   metrics: Array<{ symbol: string; focus_score: number; payload: unknown }>,

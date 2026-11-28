@@ -1,4 +1,4 @@
-interface YahooChartPoint {
+export interface YahooChartPoint {
   date: string;
   close: number;
 }
@@ -165,6 +165,60 @@ export async function fetchYahooChart(
   } catch {
     return [];
   }
+}
+
+// Yahoo's spark endpoint answers at most 20 symbols per call.
+const SPARK_BATCH = 20;
+
+/**
+ * Closes for many symbols at once from Yahoo's spark endpoint: one request
+ * per 20 symbols instead of one each, which matters under the free plan's
+ * 50 outbound requests per invocation. Same series as fetchYahooChart
+ * (checked on all 22 default market rows on 2026-11-28; spark rounds to two
+ * decimals), with the same patch for a newest bar that has no close yet.
+ * Symbols Yahoo doesn't return are simply missing from the map.
+ */
+export async function fetchYahooSpark(
+  symbols: readonly string[],
+  range = "1y",
+  interval = "1d",
+): Promise<Map<string, YahooChartPoint[]>> {
+  const batches: string[][] = [];
+  for (let i = 0; i < symbols.length; i += SPARK_BATCH) batches.push(symbols.slice(i, i + SPARK_BATCH));
+  const settled = await Promise.allSettled(batches.map(async (batch) => {
+    const url = new URL("https://query1.finance.yahoo.com/v7/finance/spark");
+    url.searchParams.set("symbols", batch.join(","));
+    url.searchParams.set("range", range);
+    url.searchParams.set("interval", interval);
+    const resp = await fetch(url.toString(), {
+      headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
+      cf: { cacheTtl: 300, cacheEverything: false },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!resp.ok) throw new Error(`spark HTTP ${resp.status}`);
+    return await resp.json() as {
+      spark?: { result?: Array<{ symbol?: string; response?: YahooChartResult[] }> };
+    };
+  }));
+  const out = new Map<string, YahooChartPoint[]>();
+  for (const r of settled) {
+    if (r.status !== "fulfilled") { console.error("fetchYahooSpark:", r.reason); continue; }
+    for (const item of r.value?.spark?.result ?? []) {
+      const result = item.response?.[0];
+      if (!item.symbol || !result) continue;
+      patchLastBarFromMeta(result, interval);
+      const ts = result.timestamp ?? [];
+      const closes = result.indicators?.quote?.[0]?.close ?? [];
+      const points: YahooChartPoint[] = [];
+      for (let i = 0; i < ts.length; i++) {
+        const c = closes[i];
+        if (c == null) continue;
+        points.push({ date: new Date(ts[i] * 1000).toISOString().slice(0, 10), close: c });
+      }
+      if (points.length) out.set(item.symbol, points);
+    }
+  }
+  return out;
 }
 
 export interface YahooQuote {

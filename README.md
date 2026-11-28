@@ -154,7 +154,6 @@ bottom since 2000.
 | Indicator | Why it matters |
 |---|---|
 | **US High Yield Option-Adjusted Spread (HY OAS)** | Cleanest credit-stress signal — credit usually moves before equities. |
-| **Investor Sentiment Bull-Bear Spread (AAII)** | Retail sentiment extremes — contrarian by construction. |
 | **CNN Fear & Greed Index** | Composite of seven sub-indicators of risk appetite. |
 | **Put/Call Ratio (5-Day Average)** | Options positioning and hedging pressure. |
 | **S&P 500 Price-to-Earnings (PE) Ratio** | Broad market valuation anchor. |
@@ -166,8 +165,10 @@ bottom since 2000.
 | **10Y–2Y Treasury Yield Curve** | Late-cycle / Fed-easing detection. |
 
 All values come from public sources (FRED, Yahoo Finance, CNN dataviz,
-multpl, Barron's, Barchart). Each reading is timestamped, stored in D1, and
-drawn on the front end with its top and bottom threshold lines.
+multpl, WorldPERatio). Nasdaq 100 breadth is computed from the members' daily
+closes after each US close. Each reading is timestamped, stored in D1, and
+drawn on the front end with its top and bottom threshold lines. A reading
+that stops updating is marked stale and left out of the score.
 
 ## The Poor2Rich Algorithm
 
@@ -202,7 +203,6 @@ negative contributions push toward a **top / risk** bias.
 | 1.0 | Put/Call (5d) | Options-flow sentiment. |
 | 1.0 | NDX > 20d MA | Market breadth. |
 | 1.0 | 10Y–2Y Curve | Macro late-cycle. |
-| 0.7 | AAII Bull-Bear | Noisy weekly survey. |
 | 0.7 | S&P 500 RSI | Price momentum. |
 | 0.7 | NDX 100 PE | Less standard. |
 | 0.6 | CBOE SKEW | Indirect, top-only. |
