@@ -195,12 +195,12 @@ export async function fetchYieldCurve(fredApiKey?: string): Promise<Observation[
   return toFredObservations(rows, "yc_10y_2y", "percent", "FRED:T10Y2Y", 1);
 }
 
-// ── Regime v2 stress inputs (after-close cron) ─────────────────────────────
-// The v2 risk side scores how fast stress is building: 20-day moves in the
-// real and nominal 10-year yields, the MOVE bond-volatility index, 4-week
-// moves in the Chicago Fed's NFCI and how close the S&P 500 is to its high.
-// Each FRED series keeps enough history in D1 for a 20-row change, so these
-// fetch ~100 rows on the first run and simply refresh them afterwards.
+// ── Regime stress inputs from FRED (daily sources of the */30 run) ─────────
+// The regime's risk side scores how fast stress is building: 20-day moves in
+// the real and nominal 10-year yields and 4-week moves in the Chicago Fed's
+// NFCI (MOVE and the S&P 500's distance from its high come with the Yahoo
+// request below). Each series keeps enough history in D1 for a 20-row
+// change, so these fetch ~100 rows each time.
 export async function fetchRealYield10y(fredApiKey?: string): Promise<Observation[]> {
   const rows = await fetchFredSeries("DFII10", fredApiKey, 150, 100);
   return toFredObservations(rows, "real_yield_10y", "percent", "FRED:DFII10", 1);
@@ -215,59 +215,6 @@ export async function fetchTreasury10y(fredApiKey?: string): Promise<Observation
 export async function fetchNfci(fredApiKey?: string): Promise<Observation[]> {
   const rows = await fetchFredSeries("NFCI", fredApiKey, 220, 30);
   return toFredObservations(rows, "nfci", "index", "FRED:NFCI", 1);
-}
-
-/** MOVE index closes, and how far the S&P 500 sits below its 252-day closing high. */
-export async function fetchMoveAndSpxHigh(): Promise<Observation[]> {
-  const series = await fetchYahooSpark(["^MOVE", "^GSPC"], "1y", "1d");   // 1 request
-  const insertedAt = today();
-  const out: Observation[] = [];
-  for (const p of (series.get("^MOVE") ?? []).slice(-5)) {
-    out.push({
-      indicator_id: "move_index", as_of: p.date, value: p.close, unit: "index",
-      source: "Yahoo:^MOVE", meta_json: null, inserted_at: insertedAt,
-    });
-  }
-  const spx = series.get("^GSPC") ?? [];
-  if (spx.length >= 200) {
-    for (let i = Math.max(0, spx.length - 5); i < spx.length; i++) {
-      const window = spx.slice(Math.max(0, i - 251), i + 1);
-      const high = Math.max(...window.map((p) => p.close));
-      out.push({
-        indicator_id: "sp500_off_high", as_of: spx[i].date,
-        value: Math.round((spx[i].close / high - 1) * 10000) / 100, unit: "percent",
-        source: "Yahoo:^GSPC (computed)",
-        // The 6-month change feeds the watchlist's relative-strength tag.
-        meta_json: JSON.stringify({
-          close: spx[i].close, high_252d: high,
-          chg_6m_pct: i >= 126 ? Math.round((spx[i].close / spx[i - 126].close - 1) * 10000) / 100 : null,
-        }),
-        inserted_at: insertedAt,
-      });
-    }
-  }
-  return out;
-}
-
-export async function fetchStressInputs(
-  env: { FRED_API_KEY?: string },
-): Promise<{ ok: string[]; err: string[]; observations: Observation[] }> {
-  const tasks: Array<[string, () => Promise<Observation[]>]> = [
-    ["dfii10", () => fetchRealYield10y(env.FRED_API_KEY)],
-    ["dgs10", () => fetchTreasury10y(env.FRED_API_KEY)],
-    ["nfci", () => fetchNfci(env.FRED_API_KEY)],
-    ["move_spx", fetchMoveAndSpxHigh],
-  ];
-  const ok: string[] = [];
-  const err: string[] = [];
-  const observations: Observation[] = [];
-  const settled = await Promise.allSettled(tasks.map(([, fn]) => fn()));
-  settled.forEach((r, i) => {
-    const name = tasks[i][0];
-    if (r.status === "fulfilled" && r.value.length) { observations.push(...r.value); ok.push(`${name}:${r.value.length}`); }
-    else err.push(`${name}:${r.status === "rejected" ? String(r.reason) : "empty"}`);
-  });
-  return { ok, err, observations };
 }
 
 // ── S&P 500 RSI from Yahoo Finance ──────────────────────────────────────────
@@ -299,13 +246,14 @@ function computeRsi(closes: number[], period = 14): number | null {
   return Math.round((100 - 100 / (1 + rs)) * 100) / 100;
 }
 
-// VIX, CBOE SKEW and the S&P 500 RSI come from one spark request (they used
-// to take three); the free plan allows 50 outbound requests per cron run.
+// VIX, CBOE SKEW, the S&P 500 RSI, the MOVE index and the S&P 500's distance
+// from its 252-day closing high all come from one spark request; the free
+// plan allows 50 outbound requests per cron run.
 export async function fetchYahooIndexIndicators(): Promise<Observation[]> {
-  const series = await fetchYahooSpark(["^VIX", "^SKEW", "^GSPC"], "1y", "1d");
+  const series = await fetchYahooSpark(["^VIX", "^SKEW", "^GSPC", "^MOVE"], "1y", "1d");
   const insertedAt = today();
   const out: Observation[] = [];
-  for (const [symbol, id] of [["^VIX", "vix"], ["^SKEW", "cboe_skew"]] as const) {
+  for (const [symbol, id] of [["^VIX", "vix"], ["^SKEW", "cboe_skew"], ["^MOVE", "move_index"]] as const) {
     for (const p of (series.get(symbol) ?? []).slice(-3)) {
       out.push({
         indicator_id: id, as_of: p.date, value: p.close, unit: "index",
@@ -321,6 +269,23 @@ export async function fetchYahooIndexIndicators(): Promise<Observation[]> {
       indicator_id: "sp500_rsi", as_of: spx[spx.length - 1].date, value: rsi, unit: "0-100",
       source: "Yahoo:^GSPC/RSI14", meta_json: null, inserted_at: insertedAt,
     });
+  }
+  // Regime "narrow market" rule: how far the index sits below its high.
+  if (spx.length >= 200) {
+    for (let i = Math.max(0, spx.length - 3); i < spx.length; i++) {
+      const high = Math.max(...spx.slice(Math.max(0, i - 251), i + 1).map((p) => p.close));
+      out.push({
+        indicator_id: "sp500_off_high", as_of: spx[i].date,
+        value: Math.round((spx[i].close / high - 1) * 10000) / 100, unit: "percent",
+        source: "Yahoo:^GSPC (computed)",
+        // The 6-month change feeds the watchlist's relative-strength tag.
+        meta_json: JSON.stringify({
+          close: spx[i].close, high_252d: high,
+          chg_6m_pct: i >= 126 ? Math.round((spx[i].close / spx[i - 126].close - 1) * 10000) / 100 : null,
+        }),
+        inserted_at: insertedAt,
+      });
+    }
   }
   return out;
 }
@@ -580,10 +545,10 @@ export async function fetchNasdaq100Pe(): Promise<Observation[]> {
 
 // ── Run all fetchable providers ──────────────────────────────────────────────
 // Sources that change at most once a day. The */30 cron fetches them only
-// when they are due (see DAILY_SOURCE_HOURS in index.ts), which saves 4–8 of
-// its 50 outbound requests on most runs. A failed fetch is due again on the
+// when they are due (see DAILY_SOURCE_HOURS in index.ts), which saves 7–14
+// of its 50 outbound requests on most runs. A failed fetch is due again on the
 // next run.
-export const DAILY_SOURCES: ReadonlySet<string> = new Set(["sp500_pe", "ndx_pe", "hy_oas", "yc_10y2y"]);
+export const DAILY_SOURCES: ReadonlySet<string> = new Set(["sp500_pe", "ndx_pe", "hy_oas", "yc_10y2y", "dfii10", "dgs10", "nfci"]);
 
 export async function fetchAllProviders(
   env: { FRED_API_KEY?: string },
@@ -606,6 +571,10 @@ export async function fetchAllProviders(
     // future opt-in can switch back to the JSON API via fetchFredJson().
     ["hy_oas",         () => fetchHyOas(env.FRED_API_KEY)],
     ["yc_10y2y",       () => fetchYieldCurve(env.FRED_API_KEY)],
+    // Regime stress inputs.
+    ["dfii10",         () => fetchRealYield10y(env.FRED_API_KEY)],
+    ["dgs10",          () => fetchTreasury10y(env.FRED_API_KEY)],
+    ["nfci",           () => fetchNfci(env.FRED_API_KEY)],
   ];
 
   // Run in parallel — all tasks are network-bound and totally independent.

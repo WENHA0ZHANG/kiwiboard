@@ -1,5 +1,5 @@
-import type { Env, MarketRegimeV2, Observation } from "./lib/types";
-import { ALL_INDICATOR_IDS, STRESS_SERIES_IDS } from "./lib/types";
+import type { Env, Observation } from "./lib/types";
+import { ALL_INDICATOR_IDS } from "./lib/types";
 import {
   getLatestObservations,
   getRecentObservations,
@@ -17,7 +17,6 @@ import {
   getWatchlistMetricsFor,
   getWatchlistMetricAges,
   upsertWatchlistMetrics,
-  getSeriesSince,
 } from "./lib/db";
 import type { WatchlistRow } from "./lib/db";
 import { getSupabaseUser, isAdmin } from "./lib/auth";
@@ -25,7 +24,7 @@ import { checkRegimeAlert, currentRegime, deliver, pushConfigured, regimeMessage
 import type { AlertTarget } from "./lib/alerts";
 import { sbDeleteUser, sbSelect, supabaseAdminConfigured } from "./lib/supabase";
 import { computeSignals } from "./lib/signals";
-import { computeMarketRegime, computeMarketRegimeV2 } from "./lib/regime";
+import { getRegime, readRegimeSnapshot, refreshRegimeSnapshot } from "./lib/regime-store";
 import { fetchYahooChart, fetchYahooOHLCV, fetchYahooNews, fetchYahooSpark } from "./lib/yahoo";
 import type { YahooBar, YahooChartPoint } from "./lib/yahoo";
 import { ASSET_RE, assetLabel, resolveSymbol, searchSymbols, verifySymbol } from "./lib/symbols";
@@ -38,7 +37,7 @@ import {
 import type { SignalRow } from "./lib/signal-log";
 import { fetchStooqDailyCloses, fetchStooqQuote } from "./lib/stooq";
 import { fetchCompanyNews, fetchGeneralNews, newsTickerForYahooSymbol } from "./lib/finnhub";
-import { DAILY_SOURCES, fetchAllProviders, fetchStressInputs } from "./lib/fetchers";
+import { DAILY_SOURCES, fetchAllProviders } from "./lib/fetchers";
 import { countSubrequests } from "./lib/subrequests";
 import { fetchNdxBreadth, fetchSp500Breadth } from "./lib/breadth";
 import { WORLD_INDICES, getIndexMeta } from "./lib/world";
@@ -338,13 +337,13 @@ async function buildWatchMetrics(symbol: string, name: string | null, wctx: Watc
 }
 
 // What the watchlist scoring needs besides the stock's own bars: the regime
-// v2 stress count (pullback setups don't score at 2 or more) and SPY's
+// stress count (pullback setups don't score at 2 or more) and SPY's
 // 6-month change for the relative-strength tag. Two one-row reads.
 type WatchContext = { stress: number | null; spy6m: number | null };
 
 async function loadWatchContext(env: Env): Promise<WatchContext> {
   const [v2, spx] = await Promise.all([
-    readRegimeV2(env).catch(() => null),
+    readRegimeSnapshot(env).catch(() => null),
     env.DB.prepare("SELECT meta_json FROM observations WHERE indicator_id = 'sp500_off_high' ORDER BY as_of DESC LIMIT 1")
       .first<{ meta_json: string | null }>().catch(() => null),
   ]);
@@ -617,40 +616,16 @@ async function writeJsonKv(env: Env, key: string, value: unknown): Promise<void>
   ).bind(key, JSON.stringify(value)).run();
 }
 
-// ── Regime v2 snapshot ───────────────────────────────────────────────────────
-// v2 runs in shadow mode next to v1 (docs/algorithm-v2-plan.md, Phase 1).
-// Both crons recompute it after storing new readings and keep the result in
-// kv_store, so /api/regime serves it with a one-row read.
-const REGIME_V2_KEY = "regime:v2";
-
-async function computeRegimeV2Now(env: Env): Promise<MarketRegimeV2> {
-  const [latest, history, ycHistory] = await Promise.all([
-    getLatestObservations(env.DB),
-    getSeriesSince(env.DB, STRESS_SERIES_IDS, 130),
-    getRecentObservations(env.DB, "yc_10y_2y", 720),
-  ]);
-  return computeMarketRegimeV2(latest, history, ycHistory.some((o) => o.value < 0));
-}
-
-async function refreshRegimeV2(env: Env): Promise<MarketRegimeV2> {
-  const v2 = await computeRegimeV2Now(env);
-  await writeJsonKv(env, REGIME_V2_KEY, v2);
-  return v2;
-}
-
-async function readRegimeV2(env: Env): Promise<MarketRegimeV2 | null> {
-  const row = await env.DB.prepare("SELECT value FROM kv_store WHERE key = ?").bind(REGIME_V2_KEY).first<{ value: string }>();
-  try { return row ? JSON.parse(row.value) as MarketRegimeV2 : null; } catch { return null; }
-}
-
 // ── After-close jobs (second cron trigger) ───────────────────────────────────
 // Must match the second entry of `crons` in wrangler.toml. It fires at 21:10,
 // 22:10 and 23:10 UTC on weekdays, after the US close (21:00 UTC in winter,
 // 20:00 in summer). The two breadth jobs are the heaviest work in the Worker
 // (about 0.5 MB and 1 MB of JSON), so each run does at most one of them, the
 // first not yet done today: NDX at 21:10, S&P 500 at 22:10, and the 23:10 run
-// retries whichever failed. Every run refreshes the light stress inputs
-// (FRED posts the 10-year yields late in the day) and the v2 snapshot.
+// retries whichever failed. Every run then refreshes the regime snapshot.
+// (The other regime inputs come with the */30 run: MOVE and the S&P 500's
+// distance from its high ride on its Yahoo request, the FRED series are
+// daily sources.)
 const AFTER_CLOSE_CRON = "10 21,22,23 * * 1-5";
 const AFTER_CLOSE_KEY = "afterclose:last_ok";
 
@@ -664,14 +639,6 @@ async function runAfterCloseJobs(env: Env): Promise<void> {
   const today = nyDate();
   const lastOk = await readJsonKv(env, AFTER_CLOSE_KEY).catch(() => ({} as Record<string, number>));
   const doneToday = (task: string) => lastOk[task] != null && nyDate(new Date(lastOk[task])) === today;
-
-  try {
-    const { ok, err, observations } = await fetchStressInputs(env);
-    await upsertObservations(env.DB, observations);
-    console.log(`after-close: stress inputs wrote=${observations.length} ok=[${ok.join(",")}]${err.length ? ` err=[${err.join(",")}]` : ""} (+${Date.now() - t0}ms)`);
-  } catch (e) {
-    console.error("after-close: stress inputs failed", e);
-  }
 
   const heavy: Array<[string, () => Promise<Observation[]>]> = [
     ["ndx_breadth", fetchNdxBreadth],
@@ -697,10 +664,10 @@ async function runAfterCloseJobs(env: Env): Promise<void> {
   }
 
   try {
-    const v2 = await refreshRegimeV2(env);
-    console.log(`after-close: regime v2 ${v2.score} ${v2.label} stress=${v2.stress_points} count=${v2.stress_count} (+${Date.now() - t0}ms)`);
+    const r = await refreshRegimeSnapshot(env);
+    console.log(`after-close: regime ${r.score} ${r.label} stress=${r.stress_points} count=${r.stress_count} (+${Date.now() - t0}ms)`);
   } catch (e) {
-    console.error("after-close: regime v2 failed", e);
+    console.error("after-close: regime snapshot failed", e);
   }
 }
 
@@ -717,8 +684,8 @@ export default {
 
     // ── /api/latest ──────────────────────────────────────────────────────────
     if (pathname === "/api/latest" && request.method === "GET") {
-      const latest = await getLatestObservations(env.DB);
-      const signals = computeSignals(latest);
+      const [latest, regime] = await Promise.all([getLatestObservations(env.DB), getRegime(env).catch(() => null)]);
+      const signals = computeSignals(latest, new Date(), regime);
       const signalMap = Object.fromEntries(signals.map((s) => [s.indicator_id, s]));
       const lastUpdate = await getLastUpdateTime(env.DB);
 
@@ -762,8 +729,8 @@ export default {
 
     // ── /api/alerts ──────────────────────────────────────────────────────────
     if (pathname === "/api/alerts" && request.method === "GET") {
-      const latest = await getLatestObservations(env.DB);
-      const signals = computeSignals(latest);
+      const [latest, regime] = await Promise.all([getLatestObservations(env.DB), getRegime(env).catch(() => null)]);
+      const signals = computeSignals(latest, new Date(), regime);
       return json(signals);
     }
 
@@ -791,18 +758,8 @@ export default {
 
     // ── /api/regime ──────────────────────────────────────────────────────────
     if (pathname === "/api/regime" && request.method === "GET") {
-      const latest = await getLatestObservations(env.DB);
-      const ycHistory = await getRecentObservations(env.DB, "yc_10y_2y", 720);
-      const ycRecentlyInverted = ycHistory.some((o) => o.value < 0);
-      const regime = computeMarketRegime(latest, ycRecentlyInverted);
-      // v2 (shadow mode) comes from the cron's snapshot; computed here only
-      // until the first cron run after a deploy has stored one.
-      let v2 = await readRegimeV2(env).catch(() => null);
-      if (!v2) {
-        v2 = await computeRegimeV2Now(env).catch(() => null);
-        if (v2) ctx.waitUntil(writeJsonKv(env, REGIME_V2_KEY, v2).catch(() => {}));
-      }
-      return json({ ...regime, v2 });
+      // Scored by the crons after each data update (lib/regime-store.ts).
+      return json(await getRegime(env));
     }
 
     // ── /api/indicator-history ───────────────────────────────────────────────
@@ -1451,6 +1408,10 @@ export default {
         errors = [...errors, `market_overview: ${String(e)}`];
       }
 
+      try { await refreshRegimeSnapshot(env); } catch (e) {
+        console.error("/api/refresh: regime snapshot failed", e);
+      }
+
       // Always advance the heartbeat so the UI's "Last Updated" stamp
       // moves even if upstream sources errored.
       try { await setLastCronRun(env.DB); } catch (e) {
@@ -1522,18 +1483,13 @@ export default {
           console.error("scheduled: fetchAllProviders/upsert failed", e);
         }
 
-        // 2b) Regime-change push alerts (on the indicators just stored).
-        //     They still follow v1; v2 runs beside it in shadow mode.
+        // 2b) Re-score the regime on the indicators just stored, then the
+        //     regime-change push alerts on that score.
         try {
-          console.log(`scheduled: ${await checkRegimeAlert(env)} (+${Date.now() - t0}ms)`);
+          const regime = await refreshRegimeSnapshot(env);
+          console.log(`scheduled: ${await checkRegimeAlert(env, regime)} (+${Date.now() - t0}ms)`);
         } catch (e) {
-          console.error("scheduled: regime alert failed", e);
-        }
-        try {
-          const v2 = await refreshRegimeV2(env);
-          console.log(`scheduled: regime v2 ${v2.score} ${v2.label} (+${Date.now() - t0}ms)`);
-        } catch (e) {
-          console.error("scheduled: regime v2 failed", e);
+          console.error("scheduled: regime / alert failed", e);
         }
 
         // 3) Refresh the market_overview cache (Indices / Futures & Crypto

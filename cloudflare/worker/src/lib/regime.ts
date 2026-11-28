@@ -1,4 +1,4 @@
-import type { Observation, MarketRegime, MarketRegimeV2, RegimeContribution, StressInput } from "./types";
+import type { Observation, MarketRegime, RegimeContribution, StressInput } from "./types";
 import { ALL_INDICATOR_IDS } from "./types";
 import { MAX_AGE_DAYS, ageDays, isStale } from "./freshness";
 
@@ -132,70 +132,10 @@ function classify(score: number): [string, string] {
   return ["Strong Risk", "regime-strong-risk"];
 }
 
-export function computeMarketRegime(
-  latest: Record<string, Observation>,
-  ycRecentlyInverted = true,
-  now: Date = new Date(),
-): MarketRegime {
-  const contributions: RegimeContribution[] = [];
-  const stale: MarketRegime["stale"] = [];
-  let considered = 0;
-
-  // Only the scored indicators count: D1 also holds retired series, which
-  // used to inflate the total ("4 of 17").
-  for (const id of ALL_INDICATOR_IDS) {
-    const o = latest[id];
-    if (!o) continue;
-    const c = scoreOne(o, ycRecentlyInverted);
-    if (!c) continue;
-    if (isStale(o, now)) {
-      // Listed at 0 points so the page shows the source has gone quiet.
-      stale.push({ indicator_id: id, as_of: o.as_of });
-      contributions.push({ ...c, tier: 0, points: 0, reason: `No reading since ${o.as_of}, not scored`, stale: true });
-      continue;
-    }
-    considered++;
-    contributions.push(c);
-  }
-
-  const buy = Math.round(contributions.filter((c) => c.points > 0).reduce((s, c) => s + c.points, 0) * 100) / 100;
-  const risk = Math.round(contributions.filter((c) => c.points < 0).reduce((s, c) => s - c.points, 0) * 100) / 100;
-  const score = Math.round((buy - risk) * 100) / 100;
-  const [label, css_class] = classify(score);
-
-  const fired = contributions.filter((c) => c.tier !== 0).sort((a, b) => Math.abs(b.points) - Math.abs(a.points));
-  let summary = "All indicators in normal ranges.";
-  if (fired.length) {
-    const pos = fired.filter((c) => c.points > 0);
-    const neg = fired.filter((c) => c.points < 0);
-    const parts: string[] = [];
-    if (pos.length) parts.push("Bottom signals: " + pos.map((c) => `${c.title} (${c.points >= 0 ? "+" : ""}${c.points.toFixed(1)})`).join(", "));
-    if (neg.length) parts.push("Top signals: " + neg.map((c) => `${c.title} (${c.points >= 0 ? "+" : ""}${c.points.toFixed(1)})`).join(", "));
-    summary = parts.join(" · ");
-  }
-
-  const order = Object.fromEntries(ALL_INDICATOR_IDS.map((id, i) => [id, i]));
-  const sorted = [...contributions].sort((a, b) => (order[a.indicator_id] ?? 999) - (order[b.indicator_id] ?? 999));
-
-  return {
-    score,
-    buy_points: buy,
-    risk_points: risk,
-    label,
-    css_class,
-    summary,
-    contributions: sorted,
-    coverage: contributions.filter((c) => c.tier !== 0).length,
-    total: considered,
-    stale,
-    yc_recently_inverted: ycRecentlyInverted,
-  };
-}
-
-// ── Regime v2 (shadow mode) ─────────────────────────────────────────────────
+// ── Regime v2 (live since 2026-11-28) ───────────────────────────────────────
 // Backtested in research/backtest/regime_v2.py; the design and the numbers
-// are in docs/algorithm-v2-plan.md, section 2.7. v1 stays the published
-// score (and drives push alerts) until v2 has run beside it for a few weeks.
+// are in docs/algorithm-v2-plan.md, section 2.7. It replaced v1 (which
+// scored greed levels as tops) on the page and for push alerts.
 
 type Series = ReadonlyArray<{ as_of: string; value: number; unit?: string }>;
 
@@ -335,22 +275,37 @@ function narrowMarket(h: Record<string, Series>, now: Date): StressInput {
   });
 }
 
-export function computeMarketRegimeV2(
+/** Driver-list text for a stress input: the rule that fired, or the reading. */
+function stressReason(x: StressInput, halved: boolean): string {
+  if (x.stale || x.missing) return x.reason;
+  if (x.tier) return x.reason + (halved ? " (halved: buy side ≥ 4.5)" : "");
+  return x.id === "rates" || x.id === "hy_widening" || x.id === "nfci" ? `${x.reason}: ${x.detail}` : x.reason;
+}
+
+export function computeMarketRegime(
   latest: Record<string, Observation>,
   history: Record<string, Series>,
   ycRecentlyInverted = true,
   now: Date = new Date(),
-): MarketRegimeV2 {
+): MarketRegime {
   const contributions: RegimeContribution[] = [];
+  const stale: MarketRegime["stale"] = [];
+  let considered = 0;
+  // Only the scored indicators count: D1 also holds retired series.
   for (const id of ALL_INDICATOR_IDS) {
     const o = latest[id];
     if (!o) continue;
     const c = scoreOne(o, ycRecentlyInverted);
     if (!c) continue;
     if (isStale(o, now)) {
+      // Listed at 0 points so the page shows the source has gone quiet.
+      stale.push({ indicator_id: id, as_of: o.as_of });
       contributions.push({ ...c, tier: 0, points: 0, reason: `No reading since ${o.as_of}, not scored`, stale: true });
-    } else if (c.tier < 0 && V2_DROPPED_RISK.has(id)) {
-      contributions.push({ ...c, tier: 0, points: 0, reason: `${c.reason}; not scored in v2` });
+      continue;
+    }
+    considered++;
+    if (c.tier < 0 && V2_DROPPED_RISK.has(id)) {
+      contributions.push({ ...c, tier: 0, points: 0, reason: `${c.reason}; not a top signal` });
     } else {
       contributions.push(c);
     }
@@ -364,32 +319,45 @@ export function computeMarketRegimeV2(
   for (const x of stress) {
     raw += x.tier * x.weight;
     x.points = x.tier ? -r2(x.tier * x.weight * (halved ? 0.5 : 1)) : 0;
+    if (x.stale && x.as_of) stale.push({ indicator_id: `stress_${x.id}`, as_of: x.as_of });
   }
   const stressPts = r2(stress.reduce((t, x) => t - x.points, 0));
   const score = r2(buy - levelRisk - stressPts);
   const [label, css_class] = classify(score);
 
+  // Stress inputs join the drivers list after the indicators.
+  for (const x of stress) {
+    contributions.push({
+      indicator_id: `stress_${x.id}`, title: x.title, value: x.value ?? 0, unit: x.unit,
+      tier: -x.tier, weight: x.weight, points: x.points, reason: stressReason(x, halved),
+      ...(x.stale || x.missing ? { stale: true } : {}),
+    });
+  }
+
   const fmt = (t: string, p: number) => `${t} (${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(1)})`;
-  const parts: string[] = [];
-  const firing = stress.filter((x) => x.points < 0).sort((a, b) => a.points - b.points);
-  if (firing.length) parts.push("Stress: " + firing.map((x) => fmt(x.title, x.points)).join(", ") + (halved ? " (halved)" : ""));
   const pos = contributions.filter((c) => c.points > 0).sort((a, b) => b.points - a.points);
-  if (pos.length) parts.push("Bottom signals: " + pos.map((c) => fmt(c.title, c.points)).join(", "));
   const neg = contributions.filter((c) => c.points < 0).sort((a, b) => a.points - b.points);
-  if (neg.length) parts.push("Top signals: " + neg.map((c) => fmt(c.title, c.points)).join(", "));
+  const parts: string[] = [];
+  if (pos.length) parts.push("Bottom signals: " + pos.map((c) => fmt(c.title, c.points)).join(", "));
+  if (neg.length) parts.push("Top signals: " + neg.map((c) => fmt(c.title, c.points)).join(", ") + (halved && stressPts ? " (stress halved)" : ""));
 
   return {
     version: 2,
     score, label, css_class,
+    summary: parts.join(" · ") || "All indicators in normal ranges.",
     buy_points: buy,
-    risk_points: levelRisk,
+    risk_points: r2(levelRisk + stressPts),
+    level_risk_points: levelRisk,
     stress_points: stressPts,
     stress_raw: r2(raw),
     stress_halved: halved,
     stress_count: stress.filter((x) => x.counts && x.tier > 0).length,
-    summary: parts.join(" · ") || "No stress and no indicator in a signal zone.",
     contributions,
     stress,
+    coverage: contributions.filter((c) => c.points !== 0).length,
+    total: considered + stress.filter((x) => !x.stale && !x.missing).length,
+    stale,
+    yc_recently_inverted: ycRecentlyInverted,
     computed_at: now.toISOString(),
   };
 }

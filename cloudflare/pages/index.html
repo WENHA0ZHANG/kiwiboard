@@ -1073,21 +1073,10 @@
       .sr-table .sr-r.down { color: var(--bear); font-weight: 600; }
       .sr-table .sr-r.wait { color: var(--muted); }
 
-      /* Regime v2 (Signals page, shadow test). */
-      .rv2-top { padding: 0 26px 14px; }
-      .rv2-score { font-size: 30px; font-weight: 750; letter-spacing: -0.02em; color: var(--text-strong); white-space: nowrap; }
-      .rv2-score .rv2-label { margin-left: 10px; font-size: 19px; font-weight: 650; letter-spacing: 0; }
-      .rv2-score:is(.regime-strong-buy, .regime-buy, .regime-cautious-buy) .rv2-label { color: var(--bull); }
-      .rv2-score:is(.regime-caution, .regime-risk, .regime-strong-risk) .rv2-label { color: var(--bear); }
-      .rv2-score.regime-neutral .rv2-label { color: var(--muted); }
-      .rv2-sub { margin-top: 4px; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .rv2-sub b { color: var(--text); font-weight: 600; }
-      .rv2-table td { white-space: nowrap; }
-      .rv2-table .rv2-name { font-weight: 500; color: var(--text-strong); }
-      .rv2-table .rv2-pts { text-align: right; font-weight: 650; }
-      .rv2-table .rv2-pts.risk { color: var(--bear); }
-      .rv2-table tr.is-zero td { color: var(--muted); }
-      .rv2-table tr.is-zero .rv2-name { color: var(--text); font-weight: 400; }
+      /* Regime algorithm: stress inputs under the two columns. */
+      .regime-method .rm-span { grid-column: 1 / -1; }
+      .regime-method .rm-note { margin: 14px 0 0; font-size: 14px; line-height: 1.55; color: var(--muted); }
+      .regime-method .rm-stress-table td:nth-child(3) { white-space: nowrap; }
       .wl-pattern-pill {
         display: inline-block; padding: 3px 8px; border-radius: 4px;
         font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
@@ -1540,25 +1529,21 @@
         .sr-table :is(th, td) { padding: 9px 6px; }
         .sr-table :is(th, td):first-child { padding-left: 16px; }
         .sr-table :is(th, td):last-child { padding-right: 16px; }
-        .rv2-top { padding: 0 16px 12px; }
-        .rv2-score { font-size: 26px; }
-        .rv2-sub { font-size: 13px; }
-        /* Regime v2 stress inputs: name + points per row; tap for the rule. */
-        .rv2-table thead { display: none; }
-        .rv2-table, .rv2-table tbody { display: block; }
-        .rv2-table tr {
-          display: grid; grid-template-columns: minmax(0, 1fr) auto;
-          grid-template-areas: "name pts" "val val" "rule rule"; align-items: center; gap: 4px 8px;
-          padding: 11px 16px; border-top: 1px solid var(--border);
+        /* Regime algorithm stress inputs: weight + name; tap for the rule. */
+        .regime-method .rm-stress-table thead { display: none; }
+        .regime-method .rm-stress-table, .regime-method .rm-stress-table tbody { display: block; }
+        .regime-method .rm-stress-table tr {
+          display: grid; grid-template-columns: 52px minmax(0, 1fr); grid-template-areas: "w name" ". rule";
+          align-items: center; gap: 4px 0; padding: 8px 0; border-top: 1px solid var(--border);
           cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
-        .rv2-table tr td { padding: 0; border: 0; background: none; }
-        .rv2-table .rv2-name { grid-area: name; font-size: 14.5px; }
-        .rv2-table .rv2-pts { grid-area: pts; }
-        .rv2-table .rv2-val { grid-area: val; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-        .rv2-table .rv2-rule { grid-area: rule; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
-        .rv2-table tr:not(.open) .rv2-rule { display: none; }
-        .rv2-table tr.open .sg-chev { transform: rotate(180deg); }
+        .regime-method .rm-stress-table tr:first-child { border-top: 0; }
+        .regime-method .rm-stress-table tr td { padding: 0; border: 0; }
+        .regime-method .rm-stress-table td:first-child { grid-area: w; width: auto; }
+        .regime-method .rm-stress-table td:nth-child(2) { grid-area: name; padding-left: 0; }
+        .regime-method .rm-stress-table td:nth-child(3) { grid-area: rule; padding-left: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+        .regime-method .rm-stress-table tr:not(.open) td:nth-child(3) { display: none; }
+        .regime-method .rm-stress-table tr.open .sg-chev { transform: rotate(180deg); }
         /* Timeframes on one row. */
         .wl-detail-controls { padding: 12px 12px 0; flex-wrap: nowrap; gap: 2px; }
         .wl-detail-controls button { flex: 1 1 auto; padding: 6px 3px; font-size: 13.5px; white-space: nowrap; }
@@ -2037,17 +2022,19 @@
           <div class="regime-method-col">
             <div class="rm-eyebrow">Formula</div>
             <div class="rm-formula-block">
-              score &nbsp;=&nbsp; <span style="font-size: 26px; vertical-align: middle;">Σ</span><sub style="font-size: 13px;"><em>i</em></sub>&nbsp; tier(<em>x<sub>i</sub></em>) &times; <em>w<sub>i</sub></em>
+              score &nbsp;=&nbsp; <span style="font-size: 26px; vertical-align: middle;">Σ</span><sub style="font-size: 13px;"><em>i</em></sub>&nbsp; tier(<em>x<sub>i</sub></em>) &times; <em>w<sub>i</sub></em> &nbsp;−&nbsp; <span style="font-size: 26px; vertical-align: middle;">Σ</span><sub style="font-size: 13px;"><em>j</em></sub>&nbsp; <em>s<sub>j</sub></em> &times; <em>w<sub>j</sub></em>
             </div>
             <table class="rm-formula-legend">
               <tbody>
                 <tr><td class="sym">x<sub>i</sub></td><td>current reading of indicator <em>i</em></td></tr>
                 <tr><td class="sym">tier(x<sub>i</sub>)</td><td>signed extremeness: <code>±1</code> mild, <code>±2</code> strong, <code>±3</code> extreme</td></tr>
-                <tr><td class="sym">w<sub>i</sub></td><td>quality weight (see table →)</td></tr>
+                <tr><td class="sym">s<sub>j</sub></td><td>stress input <em>j</em> firing: <code>1</code> or <code>2</code></td></tr>
+                <tr><td class="sym">w</td><td>quality weight (see tables)</td></tr>
                 <tr><td class="sym">score &gt; 0</td><td><span style="color:var(--bull);">bottom / buy bias</span></td></tr>
                 <tr><td class="sym">score &lt; 0</td><td><span style="color:var(--bear);">top / caution bias</span></td></tr>
               </tbody>
             </table>
+            <p class="rm-note">Stress counts half once the buy side reaches +4.5, so a panic low still reads as a buy. Low VIX, high RSI, strong breadth and tight credit spreads are not counted as tops: in tests back to 1990 they came before calmer markets, not drawdowns.</p>
           </div>
           <div class="regime-method-col">
             <div class="rm-eyebrow">Indicator Weights (w<sub>i</sub>)</div>
@@ -2056,25 +2043,36 @@
                 <tr><th>Weight</th><th>Indicator</th><th>Rationale</th></tr>
               </thead>
               <tbody>
-                <tr><td>1.5</td><td>VIX</td><td>Real-time, hard to game</td></tr>
-                <tr><td>1.5</td><td>HY OAS</td><td>Cleanest credit-stress signal</td></tr>
+                <tr><td>1.5</td><td>VIX</td><td>Fear spikes (&gt; 25)</td></tr>
+                <tr><td>1.5</td><td>HY OAS</td><td>Credit stress (≥ 4%)</td></tr>
                 <tr><td>1.2</td><td>S&amp;P 500 PE</td><td>Valuation anchor</td></tr>
                 <tr><td>1.0</td><td>CNN F&amp;G</td><td>Composite sentiment</td></tr>
                 <tr><td>1.0</td><td>Put/Call</td><td>Options-flow sentiment</td></tr>
-                <tr><td>1.0</td><td>NDX &gt; 20d MA</td><td>Market breadth</td></tr>
+                <tr><td>1.0</td><td>NDX &gt; 20d MA</td><td>Washouts (&lt; 20%)</td></tr>
                 <tr><td>1.0</td><td>10Y-2Y Curve</td><td>Macro late-cycle</td></tr>
-                <tr><td>0.7</td><td>S&amp;P 500 RSI</td><td>Price momentum</td></tr>
+                <tr><td>0.7</td><td>S&amp;P 500 RSI</td><td>Oversold (&lt; 30)</td></tr>
                 <tr><td>0.7</td><td>NDX 100 PE</td><td>Less standard</td></tr>
-                <tr><td>0.6</td><td>CBOE SKEW</td><td>Indirect, top ≥155 / bottom ≤135</td></tr>
+                <tr><td>0.6</td><td>CBOE SKEW</td><td>Low hedging (≤ 135)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="regime-method-col rm-span">
+            <div class="rm-eyebrow">Stress Inputs (w<sub>j</sub>)</div>
+            <table class="rm-weights-table rm-stress-table">
+              <thead>
+                <tr><th>Weight</th><th>Input</th><th>1st / 2nd tier</th></tr>
+              </thead>
+              <tbody>
+                <tr data-m-toggle><td>1.0</td><td>Rate shock<span class="m-only"><svg class="ico sg-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></td><td>Real 10Y +0.25 / +0.40 pp, or 10Y +0.40 / +0.60 pp, in 20 days</td></tr>
+                <tr data-m-toggle><td>1.0</td><td>MOVE<span class="m-only"><svg class="ico sg-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></td><td>Bond volatility ≥ 110 / ≥ 130</td></tr>
+                <tr data-m-toggle><td>1.5</td><td>HY widening<span class="m-only"><svg class="ico sg-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></td><td>+40 / +75 bp in 20 days, or +60 / +100 bp over the 60-day low</td></tr>
+                <tr data-m-toggle><td>1.0</td><td>NFCI<span class="m-only"><svg class="ico sg-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></td><td>Financial conditions +0.05 / +0.10 in 4 weeks</td></tr>
+                <tr data-m-toggle><td>0.8</td><td>CBOE SKEW<span class="m-only"><svg class="ico sg-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></td><td>Tail hedging ≥ 150 / ≥ 160</td></tr>
+                <tr data-m-toggle><td>1.0</td><td>Narrow market<span class="m-only"><svg class="ico sg-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></td><td>S&amp;P within 2% of its high, under 55% of members above the 50-day MA</td></tr>
               </tbody>
             </table>
           </div>
         </div>
-      </div>
-
-      <div class="card stack-gap" id="regime-v2-card">
-        <h2><span>Regime v2<span class="d-only"> · testing</span></span><span class="meta" id="rv2-meta">—</span></h2>
-        <div id="rv2-body"><div class="empty">Loading…</div></div>
       </div>
 
       <div class="grid">
@@ -2384,6 +2382,7 @@
           sp500_rsi: "S&P 500 RSI", us_high_yield_spread: "HY OAS",
           nasdaq100_above_20d_ma: "NDX > 20d MA", sp500_pe_ratio: "S&P 500 PE",
           nasdaq100_pe_ratio: "NDX 100 PE", cboe_skew: "CBOE SKEW", yc_10y_2y: "10Y-2Y Curve",
+          stress_rates: "Rate shock", stress_move: "MOVE", stress_nfci: "NFCI", stress_narrow: "Narrow market",
         };
         function _indShort(id, name) { return _escHtml(IND_SHORT[id] || name || id || ""); }
         const SG_CHEV = '<svg class="ico sg-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
@@ -4960,8 +4959,8 @@
           const meta = document.getElementById("tp-meta");
           if (!body) return;
           if (meta) meta.textContent = _usSessionOpen() ? "Today" : "Next session";
-          const v2 = window._regimeV2;
-          const stress = v2 && typeof v2.stress_count === "number" ? v2.stress_count : null;
+          const rg = window._regime;
+          const stress = rg && typeof rg.stress_count === "number" ? rg.stress_count : null;
           const items = _tpItems();
           const prefs = _tpPrefs();
           const rows = items.map(x => {
@@ -5030,39 +5029,6 @@
             body.innerHTML = `<div class="tp-empty">Signal record unavailable.</div>`;
           }
           _wlSyncHeights();
-        }
-
-        // ── Regime v2 (shadow test, Signals page) ──────────────────────────
-        const RV2_RULES = {
-          rates: "Real 10Y +0.25/+0.40 pp or 10Y +0.40/+0.60 pp in 20 days",
-          move: "MOVE ≥ 110 / ≥ 130",
-          hy_widening: "HY +40/+75 bp in 20 days, or +60/+100 bp over its 60-day low",
-          nfci: "NFCI +0.05 / +0.10 in 4 weeks",
-          skew: "SKEW ≥ 150 / ≥ 160",
-          narrow: "S&P within 2% of its high, under 55% above the 50-day MA",
-        };
-        function renderRegimeV2(r) {
-          const body = document.getElementById("rv2-body");
-          const meta = document.getElementById("rv2-meta");
-          if (!body) return;
-          const v = r && r.v2;
-          if (!v) { body.innerHTML = `<div class="empty">No v2 reading yet.</div>`; return; }
-          const pts = (x) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(1);
-          if (meta && v.computed_at) {
-            meta.textContent = "Updated " + new Date(v.computed_at).toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" });
-          }
-          const v1 = `${(r.score >= 0 ? "+" : "") + r.score.toFixed(1)} ${_escHtml(r.label)}`;
-          const rows = (v.stress || []).map(x => {
-            const reading = x.stale ? `No reading since ${x.as_of}` : x.missing ? "Waiting for data" : (x.detail || "—");
-            return `<tr data-m-toggle class="${x.points ? "" : "is-zero"}"><td class="rv2-name">${_escHtml(x.title)}<span class="m-only">${SG_CHEV}</span></td><td class="rv2-val" title="${_escHtml(x.reason || "")}">${_escHtml(reading)}</td><td class="rv2-pts ${x.points < 0 ? "risk" : ""}">${x.points ? pts(x.points) : "0"}</td><td class="rv2-rule meta">${_escHtml(RV2_RULES[x.id] || "")}</td></tr>`;
-          }).join("");
-          body.innerHTML = `<div class="rv2-top">
-              <div class="rv2-score ${v.css_class}">${(v.score >= 0 ? "+" : "") + v.score.toFixed(1)}<span class="rv2-label">${_escHtml(v.label)}</span></div>
-              <div class="rv2-sub"><span class="d-only">Live score </span><span class="m-only">Live </span><b>${v1}</b><span class="d-only"> · alerts still follow the live score</span></div>
-              <div class="rv2-sub">${pts(v.buy_points)} buy · ${pts(-v.risk_points)} risk · ${pts(-v.stress_points)} stress${v.stress_halved ? " (halved)" : ""}<span class="d-only"> · stress count ${v.stress_count} of 5</span></div>
-            </div>
-            <div class="table-scroll"><table class="rv2-table"><thead><tr><th>Stress input</th><th>Reading</th><th style="text-align:right;">Points</th><th>Rule (1st / 2nd tier)</th></tr></thead><tbody>${rows}</tbody></table></div>
-            <div class="empty"><span class="d-only">v2 keeps the buy side and swaps the greed-level risk rules (VIX &lt; 14, RSI &gt; 70, NDX breadth &gt; 80, HY ≤ 2.7%, SKEW ≥ 155), which came before calmer markets, for stress building: rate shocks, bond volatility, widening credit, tighter financial conditions, tail hedging and a narrow market. Stress counts half when buy points reach 4.5. It runs beside the live score for a few weeks before replacing it.</span><span class="m-only">Testing beside the live score. Alerts still follow the live score.</span></div>`;
         }
 
         function renderWatchlistFocus() {
@@ -6277,10 +6243,8 @@
             // ── Market Regime panel + drivers ───────────────────────────────
             if (regimeResp.ok) {
               const r = await regimeResp.json();
-              // Regime v2 runs in shadow mode: its own card on the Signals
-              // page, and its stress count pauses pullbacks in the Trade Plan.
-              window._regimeV2 = r.v2 || null;
-              try { renderRegimeV2(r); } catch (e) { console.error("renderRegimeV2:", e); }
+              // Its stress count also pauses pullbacks in the Trade Plan.
+              window._regime = r;
               try { renderTradePlan(); } catch (e) {}
               const container = document.getElementById("regime-container");
               if (!container) return;
@@ -6311,7 +6275,7 @@
   </div>
   <div class="rg-label">${r.label}</div>
   <div class="rg-score">${scoreStr}<span>score</span></div>
-  <div class="rg-pts"><span class="buy">+${r.buy_points.toFixed(1)} buy</span> / <span class="risk">${r.risk_points > 0 ? "−" : ""}${r.risk_points.toFixed(1)} risk</span> · ${r.coverage}/${r.total} indicators triggered</div>
+  <div class="rg-pts"><span class="buy">+${r.buy_points.toFixed(1)} buy</span> / <span class="risk">${r.risk_points > 0 ? "−" : ""}${r.risk_points.toFixed(1)} risk</span> · ${r.coverage}/${r.total} inputs triggered</div>
   <div class="rg-scale" role="img" aria-label="Score ${scoreStr}: ${r.label}, on a scale from Strong Risk to Strong Buy">${segs}<i class="rg-pointer" style="left:${pointer.toFixed(1)}%"></i></div>
   <div class="rg-scale-labels"><span>Risk</span><span>Neutral</span><span>Buy</span></div>
   <details class="rg-bands"${bandsOpen ? " open" : ""}><summary>Band thresholds</summary><div class="band-list">${bandRows}</div></details>

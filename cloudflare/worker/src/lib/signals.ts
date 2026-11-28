@@ -1,15 +1,28 @@
-import type { Observation, Signal } from "./types";
+import type { MarketRegime, Observation, Signal, StressInput } from "./types";
 import { isStale } from "./freshness";
 
+// Stress-input rows (regime v2). Their readings come from the regime
+// snapshot, which has the history a 20-day change needs.
+const STRESS_ROWS: Partial<Record<StressInput["id"], { title: string; rule: string }>> = {
+  rates: { title: "Rate Shock: 10-Year Real or Nominal Yield", rule: "real +0.25 pp or 10Y +0.40 pp in 20 days: top" },
+  move: { title: "MOVE Bond Volatility Index", rule: "≥ 110: top" },
+  nfci: { title: "Chicago Fed Financial Conditions (NFCI)", rule: "+0.05 in 4 weeks: top" },
+  narrow: { title: "Narrow Market: S&P 500 Near Its High", rule: "within 2% of the high, < 55% of members above the 50-day MA: top" },
+};
+
 /**
- * Port of Python signals.py — computes bull/bear alert signals from the
- * latest indicator readings.
+ * Bull / bear signal per indicator, with the same rules as the regime (v2):
+ * the greed-level "tops" it dropped (low VIX, high RSI, strong breadth,
+ * tight HY spreads) only count as bottoms here too, and the stress inputs
+ * get rows of their own when the regime snapshot is passed in.
  */
 export function computeSignals(
   latest: Record<string, Observation>,
   now: Date = new Date(),
+  regime: MarketRegime | null = null,
 ): Signal[] {
   const out: Signal[] = [];
+  const stress = new Map((regime?.stress ?? []).map((x) => [x.id, x]));
 
   // 1) CNN Fear & Greed
   const fg = latest["cnn_fear_greed_index"];
@@ -46,10 +59,10 @@ export function computeSignals(
     const v = vix.value;
     out.push({
       indicator_id: "vix",
-      top: v < 14,
+      top: false,
       bottom: v > 25,
       title: "S&P 500 Volatility Index",
-      detail: `${v.toFixed(2)} (< 14 complacency; > 25 fear / > 30 panic)`,
+      detail: `${v.toFixed(2)} (> 25 fear, > 30 panic: bottom)`,
     });
   }
 
@@ -59,10 +72,10 @@ export function computeSignals(
     const v = rsi.value;
     out.push({
       indicator_id: "sp500_rsi",
-      top: v >= 70,
+      top: false,
       bottom: v <= 30,
       title: "S&P 500 Relative Strength Index",
-      detail: `${v.toFixed(2)} (> 70 overbought; < 30 oversold)`,
+      detail: `${v.toFixed(2)} (≤ 30 oversold: bottom)`,
     });
   }
 
@@ -98,10 +111,10 @@ export function computeSignals(
     const v = ndtw.value;
     out.push({
       indicator_id: "nasdaq100_above_20d_ma",
-      top: v > 80,
+      top: false,
       bottom: v < 20,
       title: "Nasdaq 100 Above 20-Day Moving Average (%)",
-      detail: `${v.toFixed(2)}% (> 80 top; < 20 bottom)`,
+      detail: `${v.toFixed(2)}% (< 20 broad selloff: bottom)`,
     });
   }
 
@@ -111,12 +124,14 @@ export function computeSignals(
     const raw = hy.value;
     const bp = (hy.unit === "percent" || raw < 30) ? raw * 100 : raw;
     const pct = bp / 100;
+    const widening = stress.get("hy_widening");
     out.push({
       indicator_id: "us_high_yield_spread",
-      top: bp < 270,
+      top: (widening?.tier ?? 0) > 0,
       bottom: bp > 400,
       title: "US High Yield Option-Adjusted Spread",
-      detail: `Current ${pct.toFixed(2)}% (< 2.7% credit-greed top; > 4.0% credit-stress bottom)`,
+      detail: `${pct.toFixed(2)}%${widening?.detail ? `, ${widening.detail}` : ""} ` +
+        "(+40 bp in 20 days or +60 bp over the 60-day low: top; > 4.0%: bottom)",
     });
   }
 
@@ -126,10 +141,10 @@ export function computeSignals(
     const v = skew.value;
     out.push({
       indicator_id: "cboe_skew",
-      top: v >= 155,
+      top: v >= 150,
       bottom: v <= 135,
       title: "CBOE SKEW (Tail-Risk Hedging)",
-      detail: `${v.toFixed(1)} (≥ 155 tail-hedging spike — top; ≤ 135 low hedging — bottom)`,
+      detail: `${v.toFixed(1)} (≥ 150 tail hedging: top; ≤ 135 low hedging: bottom)`,
     });
   }
 
@@ -155,6 +170,21 @@ export function computeSignals(
       s.stale = true;
       s.detail = `No reading since ${o.as_of}, not used. ${s.detail}`;
     }
+  }
+
+  // 11–14) Stress inputs that have no indicator row of their own.
+  for (const [id, row] of Object.entries(STRESS_ROWS) as Array<[StressInput["id"], { title: string; rule: string }]>) {
+    const x = stress.get(id);
+    if (!x) continue;
+    const quiet = Boolean(x.stale || x.missing);
+    out.push({
+      indicator_id: `stress_${id}`,
+      top: !quiet && x.tier > 0,
+      bottom: false,
+      title: row.title,
+      detail: quiet ? `${x.reason}. (${row.rule})` : `${x.detail} (${row.rule})`,
+      ...(quiet ? { stale: true } : {}),
+    });
   }
 
   return out;

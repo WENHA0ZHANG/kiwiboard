@@ -129,8 +129,8 @@ contribution of each indicator.
   strength show as tags but add no points (they only helped in hindsight).
 - **Trade Plan** lists the next session's setups with the buy price, the stop
   and a share count for the risk you set. Your account size stays in your
-  browser. When two or more regime v2 stress inputs fire, pullback setups are
-  paused (they lost money in stressed markets).
+  browser. When two or more of the regime's stress inputs fire, pullback
+  setups are paused (they lost money in stressed markets).
 - **Signal Record** logs every setup on the shared watchlist and grades it
   after each close, with the backtest's two exits (+3R target, or a 21 EMA
   trail): a live record with no survivorship bias.
@@ -157,9 +157,9 @@ news; the chart opens on Bitcoin. On a computer the lists and the chart sit
 side by side, each half the width.
 
 ### Signals
-How the regime score is built, the **regime v2** score being tested beside
-it, the bull / bear rule for every indicator and whether it is firing now,
-and the readings at every major US equity top and bottom since 2000.
+How the regime score is built, the bull / bear rule for every indicator and
+stress input and whether it is firing now, and the readings at every major
+US equity top and bottom since 2000.
 
 ## Tracked Indicators
 
@@ -178,8 +178,9 @@ and the readings at every major US equity top and bottom since 2000.
 
 All values come from public sources (FRED, Yahoo Finance, CNN dataviz,
 multpl, WorldPERatio). Nasdaq 100 and S&P 500 breadth are computed from the
-members' daily closes after each US close. Regime v2 also reads the real and
-nominal 10-year yields and the NFCI (FRED) and the MOVE index (Yahoo). Each reading is timestamped, stored in D1, and
+members' daily closes after each US close. The regime's stress inputs also
+read the real and nominal 10-year yields and the NFCI (FRED) and the MOVE
+index (Yahoo). Each reading is timestamped, stored in D1, and
 drawn on the front end with its top and bottom threshold lines. A reading
 that stops updating is marked stale and left out of the score.
 
@@ -187,38 +188,62 @@ that stops updating is marked stale and left out of the score.
 
 The Poor2Rich algorithm produces a single signed score that classifies the
 market into one of seven regimes, from **Strong Buy** to **Strong Risk**, and
-explains itself with a per-indicator contribution breakdown.
+explains itself with a per-input contribution breakdown. Version 2 (live
+since 2026-11-28) scores the risk side on stress building instead of greed
+levels.
 
 ### Formula
 
 ```
-score = Σᵢ tier(xᵢ) × wᵢ
+score = Σᵢ tier(xᵢ) × wᵢ  −  Σⱼ sⱼ × wⱼ
 ```
 
 * `xᵢ` — the latest reading of indicator *i*
 * `tier(xᵢ)` — a signed extremeness tier in `{-3, -2, -1, 0, +1, +2, +3}`,
   derived from how extreme the value is vs. its historical top/bottom
-  thresholds (e.g. RSI < 25 = +2, RSI > 80 = −2).
-* `wᵢ` — a quality weight reflecting how reliably the indicator has marked
+  thresholds (e.g. RSI < 25 = +2, F&G ≥ 85 = −2).
+* `sⱼ` — stress input *j* firing at its first or second tier (`1` or `2`).
+* `wᵢ`, `wⱼ` — quality weights reflecting how reliably each input has marked
   tops/bottoms historically.
 
 Positive contributions push the score toward a **buy / bottom** bias;
-negative contributions push toward a **top / risk** bias.
+negative contributions push toward a **top / risk** bias. Stress counts half
+once the buy side reaches +4.5, so a panic low still reads as a buy.
 
 ### Indicator Weights
 
 | Weight | Indicator | Rationale |
 |---|---|---|
-| 1.5 | VIX | Real-time, hard to game. |
-| 1.5 | HY OAS | Cleanest credit-stress signal. |
+| 1.5 | VIX | Fear spikes (> 25). |
+| 1.5 | HY OAS | Credit stress (≥ 4%). |
 | 1.2 | S&P 500 PE | Valuation anchor. |
 | 1.0 | CNN Fear & Greed | Composite sentiment. |
 | 1.0 | Put/Call (5d) | Options-flow sentiment. |
-| 1.0 | NDX > 20d MA | Market breadth. |
+| 1.0 | NDX > 20d MA | Washouts (< 20%). |
 | 1.0 | 10Y–2Y Curve | Macro late-cycle. |
-| 0.7 | S&P 500 RSI | Price momentum. |
+| 0.7 | S&P 500 RSI | Oversold (< 30). |
 | 0.7 | NDX 100 PE | Less standard. |
-| 0.6 | CBOE SKEW | Indirect, top-only. |
+| 0.6 | CBOE SKEW | Low hedging (≤ 135). |
+
+Low VIX, high RSI, strong breadth and tight credit spreads no longer count
+as tops: in tests back to 1990 they came *before* calmer markets, not
+drawdowns. What did lead drawdowns was stress building, scored below.
+
+### Stress Inputs
+
+| Weight | Input | 1st / 2nd tier |
+|---|---|---|
+| 1.0 | Rate shock | Real 10Y +0.25 / +0.40 pp, or 10Y +0.40 / +0.60 pp, in 20 days |
+| 1.0 | MOVE (bond volatility) | ≥ 110 / ≥ 130 |
+| 1.5 | HY widening | +40 / +75 bp in 20 days, or +60 / +100 bp over the 60-day low |
+| 1.0 | NFCI (financial conditions) | +0.05 / +0.10 in 4 weeks |
+| 0.8 | CBOE SKEW | ≥ 150 / ≥ 160 |
+| 1.0 | Narrow market | S&P 500 within 2% of its high, under 55% of members above the 50-day MA |
+
+Replayed on 2026, this version read **Risk (−5.2)** on 2026-10-02, a week
+before the October top, where the old score read Neutral, and still read
+**Buy** at the November low. Details and the backtests:
+`docs/algorithm-v2-plan.md` and `research/backtest/`.
 
 ### Regime Bands
 
@@ -234,30 +259,6 @@ negative contributions push toward a **top / risk** bias.
 
 The regime card shows the active band, the buy and risk points, and which
 indicators drove each side.
-
-### Regime v2 (testing)
-
-Backtests from 1990 to 2026 showed the live score is good at bottoms but
-blind at tops: greed-level readings (VIX below 14, RSI above 70, breadth above
-80%, tight credit spreads) came *before* calmer markets, not drawdowns. What
-did lead drawdowns was stress building. v2 keeps the buy side, drops those
-greed-level risk tiers and scores six stress inputs instead:
-
-| Input | 1st / 2nd tier | Weight |
-|---|---|---|
-| Rate shock | Real 10Y +0.25 / +0.40 pp, or 10Y +0.40 / +0.60 pp, in 20 days | 1.0 |
-| MOVE (bond volatility) | ≥ 110 / ≥ 130 | 1.0 |
-| HY widening | +40 / +75 bp in 20 days, or +60 / +100 bp over the 60-day low | 1.5 |
-| NFCI (financial conditions) | +0.05 / +0.10 in 4 weeks | 1.0 |
-| CBOE SKEW | ≥ 150 / ≥ 160 | 0.8 |
-| Narrow market | S&P 500 within 2% of its high, under 55% of members above the 50-day MA | 1.0 |
-
-Stress counts half when the buy side reaches 4.5, so a panic low still reads
-as a buy. Replayed on 2026, v2 read **Risk (−5.2)** on 2026-10-02, a week
-before the October top, where the live score read Neutral. It runs beside
-the live score for a few weeks; alerts follow the live score until it
-replaces it. Details and the backtests: `docs/algorithm-v2-plan.md` and
-`research/backtest/`.
 
 ## Platform
 
@@ -363,13 +364,14 @@ Defined in `cloudflare/worker/wrangler.toml`:
 crons = ["*/30 * * * *", "10 21,22,23 * * 1-5"]
 ```
 
-- **Every 30 minutes:** indicators, market rows, the shared watchlist (and
-  its signal log) and the regime v2 snapshot. Each run logs its outbound
-  requests against the free plan's 50.
-- **After the US close (21:10, 22:10, 23:10 UTC, weekdays):** regime v2
-  stress inputs every run; Nasdaq 100 breadth at the first run and S&P 500
-  breadth at the second (each is heavy, so they run apart), with the third
-  run retrying whichever failed.
+- **Every 30 minutes:** indicators (VIX, SKEW, RSI, MOVE and the S&P 500's
+  distance from its high in one Yahoo request; FRED series at most every 6
+  hours), market rows, the shared watchlist and its signal log, then the
+  regime score and its push alerts. Each run logs its outbound requests
+  against the free plan's 50.
+- **After the US close (21:10, 22:10, 23:10 UTC, weekdays):** Nasdaq 100
+  breadth at the first run and S&P 500 breadth at the second (each is heavy,
+  so they run apart), with the third run retrying whichever failed.
 
 ## API
 
@@ -377,7 +379,7 @@ crons = ["*/30 * * * *", "10 21,22,23 * * 1-5"]
 |---|---|
 | `GET /api/latest` | Latest value per indicator with top/bottom flags. |
 | `GET /api/alerts` | Bull/bear rule result per indicator. |
-| `GET /api/regime` | Poor2Rich score, band and per-indicator contributions, plus `v2` (the score under test, with its stress inputs). |
+| `GET /api/regime` | Poor2Rich score, band, per-indicator contributions and the stress inputs. |
 | `GET /api/signal-log` | The last 20 setups logged from the shared watchlist, graded, with their record. |
 | `GET /api/indicator-history?indicator_id=…&days=…` | History of one indicator. |
 | `GET /api/market-overview?symbols=AAPL,MSFT&assets=ETH-USD,CL=F` | Latest close plus 1W/1M/3M/1Y for indices, futures, crypto and stocks. |

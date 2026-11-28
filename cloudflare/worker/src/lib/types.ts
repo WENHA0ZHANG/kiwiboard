@@ -49,23 +49,12 @@ export interface RegimeContribution {
   stale?: boolean;   // listed for display only, scored 0
 }
 
-export interface MarketRegime {
-  score: number;
-  buy_points: number;
-  risk_points: number;
-  label: string;
-  css_class: string;
-  summary: string;
-  contributions: RegimeContribution[];
-  coverage: number;
-  total: number;                                          // indicators with fresh data
-  stale: Array<{ indicator_id: string; as_of: string }>;  // left out of the score
-  yc_recently_inverted: boolean;
-}
-
-// ── Regime v2 (shadow mode) ─────────────────────────────────────────────────
-// Same buy side as v1 minus the greed-level risk tiers; the risk side scores
-// stress building instead (docs/algorithm-v2-plan.md, section 2.7).
+// ── Market regime (v2, live since 2026-11-28) ───────────────────────────────
+// The buy side scores how extreme fear, valuation and credit levels are; the
+// risk side scores stress building (docs/algorithm-v2-plan.md, section 2.7)
+// plus the level-based tops that held up (sentiment greed, valuation, the
+// yield-curve window). Greed-level "tops" (low VIX, high RSI, strong breadth,
+// tight spreads) were dropped: they came before calmer markets, not tops.
 export interface StressInput {
   id: "rates" | "move" | "hy_widening" | "nfci" | "skew" | "narrow";
   title: string;
@@ -82,20 +71,25 @@ export interface StressInput {
   missing?: boolean;           // not enough history yet
 }
 
-export interface MarketRegimeV2 {
+export interface MarketRegime {
   version: 2;
   score: number;
   label: string;
   css_class: string;
+  summary: string;
   buy_points: number;
-  risk_points: number;         // level-based risk kept from v1 (valuation, sentiment greed, curve)
+  risk_points: number;         // level risk + stress (the whole risk side)
+  level_risk_points: number;   // sentiment greed, valuation, yield-curve window
   stress_points: number;       // after halving
   stress_raw: number;
   stress_halved: boolean;      // buy points ≥ 4.5: stress counts half
   stress_count: number;        // stress inputs firing (rates, MOVE, HY, NFCI, SKEW)
-  summary: string;
-  contributions: RegimeContribution[];
+  contributions: RegimeContribution[];   // indicators, then stress inputs
   stress: StressInput[];
+  coverage: number;            // contributions adding points
+  total: number;               // fresh indicators and stress inputs
+  stale: Array<{ indicator_id: string; as_of: string }>;  // left out of the score
+  yc_recently_inverted: boolean;
   computed_at: string;
 }
 

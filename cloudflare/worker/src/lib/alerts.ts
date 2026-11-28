@@ -1,6 +1,5 @@
 import type { Env, MarketRegime } from "./types";
-import { getLatestObservations, getRecentObservations } from "./db";
-import { computeMarketRegime } from "./regime";
+import { getRegime } from "./regime-store";
 import { isKnownPushService, sendPush, type PushTarget, type VapidKeys } from "./webpush";
 import { sbDeleteSubscription, sbInsert, sbRpc, supabaseAdminConfigured } from "./supabase";
 
@@ -20,7 +19,13 @@ interface AlertState {
   candidate: string | null;     // band seen on recent ticks but not confirmed yet
   candidateTicks: number;
   lastSent: { label: string; at: number } | null;
+  model?: number;               // regime version the stable band came from
 }
+
+// Bands confirmed under an older regime model don't count: the switch to v2
+// on 2026-11-28 changed the score's method, not the market, so its first
+// reading becomes the new baseline instead of a "Regime changed" push.
+const MODEL = 2;
 
 export interface AlertTarget extends PushTarget {
   user_id: string;
@@ -38,11 +43,9 @@ function vapidKeys(env: Env): VapidKeys {
   };
 }
 
-// Same inputs as GET /api/regime.
+// Same snapshot as GET /api/regime.
 export async function currentRegime(env: Env): Promise<MarketRegime> {
-  const latest = await getLatestObservations(env.DB);
-  const ycHistory = await getRecentObservations(env.DB, "yc_10y_2y", 720);
-  return computeMarketRegime(latest, ycHistory.some((o) => o.value < 0));
+  return getRegime(env);
 }
 
 // Bands from most bearish to most bullish (for "Up / Down from …").
@@ -115,17 +118,22 @@ async function saveState(env: Env, st: AlertState): Promise<void> {
   ).bind(STATE_KEY, JSON.stringify(st)).run();
 }
 
-// Called from the cron after fresh indicators are stored. Returns a log line.
-export async function checkRegimeAlert(env: Env): Promise<string> {
-  const regime = await currentRegime(env);
+// Called from the cron after fresh indicators are stored (and the snapshot
+// recomputed, which it passes in). Returns a log line.
+export async function checkRegimeAlert(env: Env, fresh?: MarketRegime): Promise<string> {
+  const regime = fresh ?? await currentRegime(env);
   const label = regime.label;
   const st = await loadState(env);
   const head = `regime ${label} ${regime.score.toFixed(2)}`;
 
-  if (st.stable === null) {                       // first run: remember, don't alert
+  if (st.stable === null || st.model !== MODEL) { // first run or new model: remember, don't alert
+    const was = st.stable;
     st.stable = label;
+    st.candidate = null;
+    st.candidateTicks = 0;
+    st.model = MODEL;
     await saveState(env, st);
-    return `${head} (baseline saved)`;
+    return `${head} (baseline saved${was ? `; was ${was} under the old model` : ""})`;
   }
   if (label === st.stable) {
     if (st.candidate) { st.candidate = null; st.candidateTicks = 0; await saveState(env, st); }
