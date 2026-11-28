@@ -1,4 +1,4 @@
-import type { Env, Observation } from "./lib/types";
+import type { Env, Observation, StressInput } from "./lib/types";
 import { ALL_INDICATOR_IDS } from "./lib/types";
 import {
   getLatestObservations,
@@ -24,7 +24,7 @@ import { checkRegimeAlert, currentRegime, deliver, pushConfigured, regimeMessage
 import type { AlertTarget } from "./lib/alerts";
 import { sbDeleteUser, sbSelect, supabaseAdminConfigured } from "./lib/supabase";
 import { computeSignals } from "./lib/signals";
-import { getRegime, readRegimeSnapshot, refreshRegimeSnapshot } from "./lib/regime-store";
+import { REGIME_SERIES_ID, getRegime, readRegimeSnapshot, refreshRegimeSnapshot } from "./lib/regime-store";
 import { fetchYahooChart, fetchYahooOHLCV, fetchYahooNews, fetchYahooSpark } from "./lib/yahoo";
 import type { YahooBar, YahooChartPoint } from "./lib/yahoo";
 import { ASSET_RE, assetLabel, resolveSymbol, searchSymbols, verifySymbol } from "./lib/symbols";
@@ -75,18 +75,34 @@ function err(msg: string, status = 400): Response {
 }
 
 // ── Indicator metadata ────────────────────────────────────────────────────────
+// Key Indicators names: short enough for one line beside Regime Drivers.
 const INDICATOR_NAMES: Record<string, string> = {
-  us_high_yield_spread:    "US High Yield Option-Adjusted Spread",
+  us_high_yield_spread:    "US High Yield Spread (OAS)",
   cnn_fear_greed_index:    "Fear & Greed Index",
-  cnn_put_call_options:    "Put/Call Ratio (5-Day Average)",
-  sp500_pe_ratio:          "S&P 500 Price-to-Earnings Ratio",
-  nasdaq100_pe_ratio:      "Nasdaq 100 Price-to-Earnings Ratio",
-  sp500_rsi:               "S&P 500 Relative Strength Index",
-  nasdaq100_above_20d_ma:  "Nasdaq 100 Above 20-Day Moving Average (%)",
-  vix:                     "S&P 500 Volatility Index",
-  cboe_skew:               "CBOE SKEW (Tail-Risk Hedging)",
-  yc_10y_2y:               "10Y-2Y Treasury Yield Curve",
+  cnn_put_call_options:    "Put/Call Ratio (5-Day Avg)",
+  sp500_pe_ratio:          "S&P 500 P/E Ratio",
+  nasdaq100_pe_ratio:      "Nasdaq 100 P/E Ratio",
+  sp500_rsi:               "S&P 500 RSI (14-Day)",
+  nasdaq100_above_20d_ma:  "Nasdaq 100 > 20-Day MA (%)",
+  vix:                     "VIX (S&P 500 Volatility)",
+  cboe_skew:               "CBOE SKEW (Tail Risk)",
+  yc_10y_2y:               "10Y-2Y Yield Curve",
+  market_regime:           "Market Regime",
+  real_yield_10y:          "10Y Real Yield (TIPS)",
+  ust_10y:                 "10Y Treasury Yield",
+  move_index:              "MOVE (Bond Volatility)",
+  nfci:                    "Financial Conditions (NFCI)",
+  sp500_above_50d_ma:      "S&P 500 > 50-Day MA (%)",
+  sp500_off_high:          "S&P 500 vs 52-Wk High (%)",
 };
+
+// Regime v2 stress series listed under the ten scored indicators, with the
+// stress input each one feeds (its row shows "Top signal" while that fires).
+const STRESS_SERIES_ROWS: Record<string, StressInput["id"]> = {
+  real_yield_10y: "rates", ust_10y: "rates", move_index: "move", nfci: "nfci",
+  sp500_above_50d_ma: "narrow", sp500_off_high: "narrow",
+};
+const HISTORY_IDS = new Set<string>([...ALL_INDICATOR_IDS, ...Object.keys(STRESS_SERIES_ROWS), REGIME_SERIES_ID]);
 
 const INDICATOR_SOURCE_URLS: Record<string, string> = {
   us_high_yield_spread:   "https://fred.stlouisfed.org/series/BAMLH0A0HYM2",
@@ -99,9 +115,19 @@ const INDICATOR_SOURCE_URLS: Record<string, string> = {
   vix:                    "https://edition.cnn.com/markets/fear-and-greed",
   cboe_skew:              "https://finance.yahoo.com/quote/%5ESKEW",
   yc_10y_2y:              "https://fred.stlouisfed.org/series/T10Y2Y",
+  real_yield_10y:         "https://fred.stlouisfed.org/series/DFII10",
+  ust_10y:                "https://fred.stlouisfed.org/series/DGS10",
+  nfci:                   "https://fred.stlouisfed.org/series/NFCI",
+  move_index:             "https://finance.yahoo.com/quote/%5EMOVE",
+  sp500_above_50d_ma:     "https://finance.yahoo.com/quote/%5EGSPC/components/",
+  sp500_off_high:         "https://finance.yahoo.com/quote/%5EGSPC",
 };
 
-const INDICATOR_THRESHOLDS: Record<string, { top?: number; bottom?: number; top_zone?: number[] }> = {
+const INDICATOR_THRESHOLDS: Record<string, {
+  top?: number; bottom?: number; top_zone?: number[];
+  // The regime chart: high is bullish, and its lines are band edges.
+  higher_is_bull?: boolean; top_label?: string; bottom_label?: string;
+}> = {
   cnn_fear_greed_index:   { top: 75.0, bottom: 25.0 },
   cnn_put_call_options:   { top: 0.55, bottom: 0.95 },
   vix:                    { top: 14.0, bottom: 25.0 },
@@ -112,6 +138,8 @@ const INDICATOR_THRESHOLDS: Record<string, { top?: number; bottom?: number; top_
   us_high_yield_spread:   { top: 2.7, bottom: 4.0 },
   cboe_skew:              { top: 155.0, bottom: 135.0 },
   yc_10y_2y:              { top_zone: [-0.05, 0.6] },
+  move_index:             { top: 110.0 },
+  market_regime:          { top: 1.5, bottom: -1.5, higher_is_bull: true, top_label: "Cautious Buy", bottom_label: "Caution" },
 };
 
 // ── Default market symbols ────────────────────────────────────────────────────
@@ -692,7 +720,7 @@ export default {
       const rows = ALL_INDICATOR_IDS.map((id) => {
         const o = latest[id];
         const s = signalMap[id];
-        const name = s?.title ?? INDICATOR_NAMES[id] ?? id;
+        const name = INDICATOR_NAMES[id] ?? s?.title ?? id;
 
         let valueDisplay: string | null = null;
         if (o) {
@@ -716,7 +744,7 @@ export default {
           as_of: o?.as_of ? o.as_of.slice(5) : null,  // "MM-DD"
           value: valueDisplay,
           unit: unitDisplay,
-          source: o?.source ?? null,
+          source: o?.source?.replace(/ \(computed\)$/, "") ?? null,
           source_url: INDICATOR_SOURCE_URLS[id] ?? null,
           is_top: s?.top ?? false,
           is_bottom: s?.bottom ?? false,
@@ -724,7 +752,31 @@ export default {
         };
       });
 
-      return json({ rows, last_update: lastUpdate });
+      const fmtSigned = (v: number, d: number) => (v >= 0 ? "+" : "") + v.toFixed(d);
+      const extra = Object.entries(STRESS_SERIES_ROWS).map(([id, stressId]) => {
+        const o = latest[id];
+        const x = regime?.stress.find((t) => t.id === stressId);
+        const v = o?.value;
+        return {
+          id, name: INDICATOR_NAMES[id] ?? id,
+          as_of: o?.as_of ? o.as_of.slice(5) : null,
+          value: v == null ? null : id === "nfci" || id === "sp500_off_high" ? fmtSigned(v, 2) : v.toFixed(2),
+          unit: o?.unit === "percent" ? "%" : (o?.unit ?? null),
+          source: o?.source?.replace(/ \(computed\)$/, "") ?? null,
+          source_url: INDICATOR_SOURCE_URLS[id] ?? null,
+          is_top: !!x?.tier, is_bottom: false, stale: !!x?.stale,
+        };
+      });
+      const regimeRow = regime ? [{
+        id: REGIME_SERIES_ID, name: INDICATOR_NAMES[REGIME_SERIES_ID],
+        as_of: latest[REGIME_SERIES_ID]?.as_of?.slice(5) ?? null,
+        value: (regime.score > 0 ? "+" : regime.score < 0 ? "−" : "") + Math.abs(regime.score).toFixed(1),
+        unit: null, source: "kiwiboard", source_url: null,
+        is_top: regime.score < -1.5, is_bottom: regime.score >= 1.5, stale: false,
+        status_text: regime.label,
+      }] : [];
+
+      return json({ rows: [...regimeRow, ...rows, ...extra], last_update: lastUpdate });
     }
 
     // ── /api/alerts ──────────────────────────────────────────────────────────
@@ -767,7 +819,7 @@ export default {
       const indicatorId = url.searchParams.get("indicator_id") ?? "";
       const days = Math.max(1, Math.min(parseInt(url.searchParams.get("days") ?? "3650"), 36500));
 
-      if (!ALL_INDICATOR_IDS.includes(indicatorId as typeof ALL_INDICATOR_IDS[number])) {
+      if (!HISTORY_IDS.has(indicatorId)) {
         return err("Unknown indicator_id", 404);
       }
 
@@ -784,7 +836,8 @@ export default {
       });
 
       const th = INDICATOR_THRESHOLDS[indicatorId] ?? {};
-      return json({ indicator_id: indicatorId, unit: series[0] ? obs[0]?.unit : null, series, ...th });
+      const unit = indicatorId === REGIME_SERIES_ID ? "" : series[0] ? obs[0]?.unit : null;
+      return json({ indicator_id: indicatorId, unit, series, ...th });
     }
 
     // ── /api/symbol-search ───────────────────────────────────────────────────

@@ -66,6 +66,7 @@ export interface StressInput {
   weight: number;
   points: number;              // ≤ 0, after the bottom-guard halving
   reason: string;
+  short?: string;              // one-line text for the drivers list
   counts: boolean;             // part of the stress count (all but "narrow")
   stale?: boolean;             // reading too old, not scored
   missing?: boolean;           // not enough history yet

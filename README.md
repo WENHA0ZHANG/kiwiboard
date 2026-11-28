@@ -377,11 +377,11 @@ crons = ["*/30 * * * *", "10 21,22,23 * * 1-5"]
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/latest` | Latest value per indicator with top/bottom flags. |
+| `GET /api/latest` | Latest value per indicator with top/bottom flags: the Market Regime row first, then the ten scored indicators and the six stress series. |
 | `GET /api/alerts` | Bull/bear rule result per indicator. |
 | `GET /api/regime` | Poor2Rich score, band, per-indicator contributions and the stress inputs. |
 | `GET /api/signal-log` | The last 20 setups logged from the shared watchlist, graded, with their record. |
-| `GET /api/indicator-history?indicator_id=…&days=…` | History of one indicator. |
+| `GET /api/indicator-history?indicator_id=…&days=…` | History of one indicator, the stress series, or `market_regime` (the daily score, kept since 2025-05-01). |
 | `GET /api/market-overview?symbols=AAPL,MSFT&assets=ETH-USD,CL=F` | Latest close plus 1W/1M/3M/1Y for indices, futures, crypto and stocks. |
 | `GET /api/market-news` | General market headlines (Finnhub, with Yahoo Finance as a fallback). |
 | `GET /api/stock-detail?symbol=…&range=1y` | Price history plus recent news (company news for stocks; Yahoo Finance news for crypto and futures). |

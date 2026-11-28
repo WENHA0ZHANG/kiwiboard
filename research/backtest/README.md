@@ -45,6 +45,7 @@ cd cloudflare/worker && npx wrangler d1 execute poor-trader-db --remote --json \
 | `breadth_study.py` | 检验广度信号，并列出 2026 年见顶前后的各项输入 |
 | `zone_study.py` | 检验 SPY/QQQ 的 8/21 EMA 状态和再入场点 |
 | `regime_v2.py` | v2 风险分的长期分档，以及 2025–2026 年 v1 和 v2 的对比 |
+| `regime_history.cjs` | 用线上的 v2 代码逐日重算 2025-05-01 起的分数，生成回填 `market_regime` 和六个压力序列的 SQL（Key Indicators 的历史图） |
 
 依赖顺序：先跑 `breadth.py`，再跑 `risk_study.py`（生成 `D.pkl`），再跑 `risk_study2.py`（生成 `D2.pkl`），最后跑其他脚本。
 

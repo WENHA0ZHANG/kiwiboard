@@ -38,10 +38,10 @@ function scoreOne(
   }
 
   if (id === "vix") {
-    if (v >= 40) return c("VIX", v, "", +3, `VIX ${v.toFixed(1)} ≥ 40 panic capitulation`);
-    if (v >= 30) return c("VIX", v, "", +2, `VIX ${v.toFixed(1)} > 30 fear`);
-    if (v > 25)  return c("VIX", v, "", +1, `VIX ${v.toFixed(1)} > 25 elevated fear`);
-    if (v < 12)  return c("VIX", v, "", -2, `VIX ${v.toFixed(1)} < 12 extreme complacency`);
+    if (v >= 40) return c("VIX", v, "", +3, `VIX ${v.toFixed(1)} ≥ 40 panic`);
+    if (v >= 30) return c("VIX", v, "", +2, `VIX ${v.toFixed(1)} > 30 high fear`);
+    if (v > 25)  return c("VIX", v, "", +1, `VIX ${v.toFixed(1)} > 25 fear`);
+    if (v < 12)  return c("VIX", v, "", -2, `VIX ${v.toFixed(1)} < 12 complacency`);
     if (v < 14)  return c("VIX", v, "", -1, `VIX ${v.toFixed(1)} < 14 complacency`);
     return c("VIX", v, "", 0, "VIX in normal range");
   }
@@ -56,18 +56,18 @@ function scoreOne(
   }
 
   if (id === "cnn_put_call_options") {
-    if (v >= 1.20) return c("Put/Call (5d)", v, "", +3, `P/C ${v.toFixed(2)} ≥ 1.20 panic put-buying`);
-    if (v >= 1.05) return c("Put/Call (5d)", v, "", +2, `P/C ${v.toFixed(2)} ≥ 1.05 heavy put-buying`);
-    if (v >= 0.95) return c("Put/Call (5d)", v, "", +1, `P/C ${v.toFixed(2)} ≥ 0.95 elevated fear`);
-    if (v < 0.50)  return c("Put/Call (5d)", v, "", -2, `P/C ${v.toFixed(2)} < 0.50 extreme call greed`);
+    if (v >= 1.20) return c("Put/Call (5d)", v, "", +3, `P/C ${v.toFixed(2)} ≥ 1.20 panic`);
+    if (v >= 1.05) return c("Put/Call (5d)", v, "", +2, `P/C ${v.toFixed(2)} ≥ 1.05 heavy puts`);
+    if (v >= 0.95) return c("Put/Call (5d)", v, "", +1, `P/C ${v.toFixed(2)} ≥ 0.95 fear`);
+    if (v < 0.50)  return c("Put/Call (5d)", v, "", -2, `P/C ${v.toFixed(2)} < 0.50 call greed`);
     if (v < 0.55)  return c("Put/Call (5d)", v, "", -1, `P/C ${v.toFixed(2)} < 0.55 call greed`);
     return c("Put/Call (5d)", v, "", 0, "P/C in normal range");
   }
 
   if (id === "sp500_rsi") {
-    if (v < 25)  return c("S&P 500 RSI", v, "", +2, `RSI ${v.toFixed(1)} < 25 deeply oversold`);
+    if (v < 25)  return c("S&P 500 RSI", v, "", +2, `RSI ${v.toFixed(1)} < 25 oversold`);
     if (v < 30)  return c("S&P 500 RSI", v, "", +1, `RSI ${v.toFixed(1)} < 30 oversold`);
-    if (v > 80)  return c("S&P 500 RSI", v, "", -2, `RSI ${v.toFixed(1)} > 80 deeply overbought`);
+    if (v > 80)  return c("S&P 500 RSI", v, "", -2, `RSI ${v.toFixed(1)} > 80 overbought`);
     if (v > 70)  return c("S&P 500 RSI", v, "", -1, `RSI ${v.toFixed(1)} > 70 overbought`);
     return c("S&P 500 RSI", v, "", 0, "RSI in normal range");
   }
@@ -75,49 +75,49 @@ function scoreOne(
   if (id === "us_high_yield_spread") {
     const bp = (o.unit === "bp" || v > 30) ? v : v * 100;
     const pct = bp / 100;
-    if (bp >= 700) return c("HY OAS", pct, "%", +3, `HY ${pct.toFixed(2)}% ≥ 7% credit panic`);
-    if (bp >= 550) return c("HY OAS", pct, "%", +2, `HY ${pct.toFixed(2)}% ≥ 5.5% credit stress`);
-    if (bp >= 400) return c("HY OAS", pct, "%", +1, `HY ${pct.toFixed(2)}% ≥ 4.0% credit stress`);
-    if (bp <= 250) return c("HY OAS", pct, "%", -2, `HY ${pct.toFixed(2)}% ≤ 2.5% credit complacency`);
-    if (bp <= 270) return c("HY OAS", pct, "%", -1, `HY ${pct.toFixed(2)}% ≤ 2.7% credit-greed`);
+    if (bp >= 700) return c("HY OAS", pct, "%", +3, `HY ${pct.toFixed(2)}% ≥ 7% panic`);
+    if (bp >= 550) return c("HY OAS", pct, "%", +2, `HY ${pct.toFixed(2)}% ≥ 5.5% stress`);
+    if (bp >= 400) return c("HY OAS", pct, "%", +1, `HY ${pct.toFixed(2)}% ≥ 4% stress`);
+    if (bp <= 250) return c("HY OAS", pct, "%", -2, `HY ${pct.toFixed(2)}% ≤ 2.5% tight`);
+    if (bp <= 270) return c("HY OAS", pct, "%", -1, `HY ${pct.toFixed(2)}% ≤ 2.7% tight`);
     return c("HY OAS", pct, "%", 0, "HY OAS in normal range");
   }
 
   if (id === "nasdaq100_above_20d_ma") {
-    if (v < 10)  return c("NDX > 20d MA", v, "%", +2, `${v.toFixed(0)}% < 10 broad capitulation`);
+    if (v < 10)  return c("NDX > 20d MA", v, "%", +2, `${v.toFixed(0)}% < 10 capitulation`);
     if (v < 20)  return c("NDX > 20d MA", v, "%", +1, `${v.toFixed(0)}% < 20 broad selloff`);
-    if (v > 90)  return c("NDX > 20d MA", v, "%", -2, `${v.toFixed(0)}% > 90 extreme breadth thrust`);
-    if (v > 80)  return c("NDX > 20d MA", v, "%", -1, `${v.toFixed(0)}% > 80 stretched breadth`);
+    if (v > 90)  return c("NDX > 20d MA", v, "%", -2, `${v.toFixed(0)}% > 90 stretched`);
+    if (v > 80)  return c("NDX > 20d MA", v, "%", -1, `${v.toFixed(0)}% > 80 stretched`);
     return c("NDX > 20d MA", v, "%", 0, "Breadth in normal range");
   }
 
   if (id === "sp500_pe_ratio") {
     if (v <= 22) return c("S&P 500 PE", v, "x", +2, `PE ${v.toFixed(1)}x ≤ 22 deep value`);
-    if (v <= 25) return c("S&P 500 PE", v, "x", +1, `PE ${v.toFixed(1)}x ≤ 25 cheap valuation`);
-    if (v >= 35) return c("S&P 500 PE", v, "x", -2, `PE ${v.toFixed(1)}x ≥ 35 extreme valuation`);
+    if (v <= 25) return c("S&P 500 PE", v, "x", +1, `PE ${v.toFixed(1)}x ≤ 25 cheap`);
+    if (v >= 35) return c("S&P 500 PE", v, "x", -2, `PE ${v.toFixed(1)}x ≥ 35 very rich`);
     if (v >= 31) return c("S&P 500 PE", v, "x", -1, `PE ${v.toFixed(1)}x ≥ 31 expensive`);
     return c("S&P 500 PE", v, "x", 0, "PE in normal range");
   }
 
   if (id === "nasdaq100_pe_ratio") {
-    if (v <= 22) return c("NDX 100 PE", v, "x", +2, `NDX PE ${v.toFixed(1)}x ≤ 22 deep value`);
-    if (v <= 26) return c("NDX 100 PE", v, "x", +1, `NDX PE ${v.toFixed(1)}x ≤ 26 cheap`);
-    if (v >= 34) return c("NDX 100 PE", v, "x", -2, `NDX PE ${v.toFixed(1)}x ≥ 34 extreme valuation`);
-    if (v >= 30) return c("NDX 100 PE", v, "x", -1, `NDX PE ${v.toFixed(1)}x ≥ 30 expensive`);
+    if (v <= 22) return c("NDX 100 PE", v, "x", +2, `PE ${v.toFixed(1)}x ≤ 22 deep value`);
+    if (v <= 26) return c("NDX 100 PE", v, "x", +1, `PE ${v.toFixed(1)}x ≤ 26 cheap`);
+    if (v >= 34) return c("NDX 100 PE", v, "x", -2, `PE ${v.toFixed(1)}x ≥ 34 very rich`);
+    if (v >= 30) return c("NDX 100 PE", v, "x", -1, `PE ${v.toFixed(1)}x ≥ 30 expensive`);
     return c("NDX 100 PE", v, "x", 0, "NDX PE in normal range");
   }
 
   if (id === "cboe_skew") {
-    if (v >= 160) return c("CBOE SKEW", v, "", -2, `SKEW ${v.toFixed(1)} ≥ 160 extreme tail-hedging`);
-    if (v >= 155) return c("CBOE SKEW", v, "", -1, `SKEW ${v.toFixed(1)} ≥ 155 tail-hedging spike`);
-    if (v <= 130) return c("CBOE SKEW", v, "", +2, `SKEW ${v.toFixed(1)} ≤ 130 extreme complacency`);
-    if (v <= 135) return c("CBOE SKEW", v, "", +1, `SKEW ${v.toFixed(1)} ≤ 135 low tail-hedging`);
+    if (v >= 160) return c("CBOE SKEW", v, "", -2, `SKEW ${v.toFixed(1)} ≥ 160 hedging`);
+    if (v >= 155) return c("CBOE SKEW", v, "", -1, `SKEW ${v.toFixed(1)} ≥ 155 hedging`);
+    if (v <= 130) return c("CBOE SKEW", v, "", +2, `SKEW ${v.toFixed(1)} ≤ 130 calm`);
+    if (v <= 135) return c("CBOE SKEW", v, "", +1, `SKEW ${v.toFixed(1)} ≤ 135 calm`);
     return c("CBOE SKEW", v, "", 0, "SKEW in normal range");
   }
 
   if (id === "yc_10y_2y") {
     if (recentlyInverted && v >= -0.05 && v <= 0.6) {
-      return c("10Y-2Y Curve", v, "%", -1, `${v >= 0 ? "+" : ""}${v.toFixed(2)}% in re-steepening top window after recent inversion`);
+      return c("10Y-2Y Curve", v, "%", -1, `${v >= 0 ? "+" : ""}${v.toFixed(2)}% re-steepening`);
     }
     return c("10Y-2Y Curve", v, "%", 0, "Curve in normal range");
   }
@@ -177,7 +177,7 @@ function stressInput(
 function quiet(id: StressInput["id"], title: string, series: Series | undefined, need: string): StressInput {
   const last = series?.length ? series[series.length - 1] : null;
   return last
-    ? stressInput(id, title, { as_of: last.as_of, stale: true, reason: `No reading since ${last.as_of}, not scored` })
+    ? stressInput(id, title, { as_of: last.as_of, stale: true, reason: `No reading since ${last.as_of.slice(5)}` })
     : stressInput(id, title, { missing: true, reason: `Waiting for ${need}` });
 }
 
@@ -187,7 +187,7 @@ function rateShock(h: Record<string, Series>, now: Date): StressInput {
   const nom = fresh(h.ust_10y, "ust_10y", now);
   const dReal = real ? rowChange(real, 20) : null;
   const dNom = nom ? rowChange(nom, 20) : null;
-  if (dReal == null && dNom == null) return quiet("rates", title, h.real_yield_10y ?? h.ust_10y, "20 days of 10-year yields");
+  if (dReal == null && dNom == null) return quiet("rates", title, h.real_yield_10y ?? h.ust_10y, "yield data");
   const tReal = dReal == null ? 0 : tier2(dReal, 0.25, 0.40);
   const tNom = dNom == null ? 0 : tier2(dNom, 0.40, 0.60);
   const tier = Math.max(tReal, tNom);
@@ -200,23 +200,27 @@ function rateShock(h: Record<string, Series>, now: Date): StressInput {
       ? `Real yield ${signed(dReal!)} pp in 20 days ≥ ${tReal === 2 ? "+0.40" : "+0.25"}`
       : `10Y yield ${signed(dNom!)} pp in 20 days ≥ ${tNom === 2 ? "+0.60" : "+0.40"}`;
   }
-  return stressInput("rates", title, { value: r2(Math.max(dReal ?? -9, dNom ?? -9)), unit: "pp", detail, as_of: asOf, tier, reason });
+  const short = tier
+    ? (tReal >= tNom ? `Real yield ${signed(dReal!)} in 20d` : `10Y yield ${signed(dNom!)} in 20d`)
+    : `${[dReal == null ? null : `Real ${signed(dReal)}`, dNom == null ? null : `10Y ${signed(dNom)}`].filter(Boolean).join(", ")} (20d)`;
+  return stressInput("rates", title, { value: r2(Math.max(dReal ?? -9, dNom ?? -9)), unit: "pp", detail, as_of: asOf, tier, reason, short });
 }
 
 function moveStress(h: Record<string, Series>, now: Date): StressInput {
   const title = "MOVE";
   const s = fresh(h.move_index, "move_index", now);
-  if (!s) return quiet("move", title, h.move_index, "the MOVE index");
+  if (!s) return quiet("move", title, h.move_index, "MOVE data");
   const v = s[s.length - 1].value;
   const tier = tier2(v, 110, 130);
   const reason = tier === 2 ? `MOVE ${v.toFixed(0)} ≥ 130 bond-market stress` : tier ? `MOVE ${v.toFixed(0)} ≥ 110 elevated` : `MOVE ${v.toFixed(0)} calm`;
-  return stressInput("move", title, { value: r2(v), detail: `${v.toFixed(1)}`, as_of: s[s.length - 1].as_of, tier, reason });
+  const short = `MOVE ${v.toFixed(0)} ${tier === 2 ? "stress" : tier ? "elevated" : "calm"}`;
+  return stressInput("move", title, { value: r2(v), detail: `${v.toFixed(1)}`, as_of: s[s.length - 1].as_of, tier, reason, short });
 }
 
 function hyWidening(h: Record<string, Series>, now: Date): StressInput {
   const title = "HY widening";
   const s0 = fresh(h.us_high_yield_spread, "us_high_yield_spread", now);
-  if (!s0 || s0.length < 21) return quiet("hy_widening", title, h.us_high_yield_spread, "20 days of HY spreads");
+  if (!s0 || s0.length < 21) return quiet("hy_widening", title, h.us_high_yield_spread, "HY data");
   // D1 stores bp; very old rows may be in percent.
   const s = s0.map((r) => ({ as_of: r.as_of, value: r.value > 30 || r.unit === "bp" ? r.value : r.value * 100 }));
   const d20 = rowChange(s, 20)!;
@@ -233,6 +237,7 @@ function hyWidening(h: Record<string, Series>, now: Date): StressInput {
   }
   return stressInput("hy_widening", title, {
     value: r2(d20), unit: "bp", as_of: s[s.length - 1].as_of, tier, reason,
+    short: !tier ? `Steady, ${signed(d20, 0)} bp in 20d` : tD >= tL ? `${signed(d20, 0)} bp in 20 days` : `${signed(above, 0)} bp over 60d low`,
     detail: `${signed(d20, 0)} bp in 20 days · ${signed(above, 0)} bp above 60-day low`,
   });
 }
@@ -240,29 +245,31 @@ function hyWidening(h: Record<string, Series>, now: Date): StressInput {
 function nfciStress(h: Record<string, Series>, now: Date): StressInput {
   const title = "NFCI";
   const s = fresh(h.nfci, "nfci", now);
-  if (!s || s.length < 5) return quiet("nfci", title, h.nfci, "5 weeks of NFCI");
+  if (!s || s.length < 5) return quiet("nfci", title, h.nfci, "NFCI data");
   const d4 = rowChange(s, 4)!;
   const v = s[s.length - 1].value;
   const tier = tier2(d4, 0.05, 0.10);
   const reason = tier ? `NFCI ${signed(d4)} in 4 weeks ≥ ${tier === 2 ? "+0.10" : "+0.05"}: financial conditions tightening` : "Financial conditions steady";
-  return stressInput("nfci", title, { value: r2(d4), detail: `${v.toFixed(2)} (4-week change ${signed(d4)})`, as_of: s[s.length - 1].as_of, tier, reason });
+  const short = tier ? `NFCI ${signed(d4)} in 4 weeks` : `NFCI ${signed(v)}, 4-wk ${signed(d4)}`;
+  return stressInput("nfci", title, { value: r2(d4), detail: `${v.toFixed(2)} (4-week change ${signed(d4)})`, as_of: s[s.length - 1].as_of, tier, reason, short });
 }
 
 function skewStress(h: Record<string, Series>, now: Date): StressInput {
   const title = "SKEW";
   const s = fresh(h.cboe_skew, "cboe_skew", now);
-  if (!s) return quiet("skew", title, h.cboe_skew, "CBOE SKEW");
+  if (!s) return quiet("skew", title, h.cboe_skew, "SKEW data");
   const v = s[s.length - 1].value;
   const tier = tier2(v, 150, 160);
   const reason = tier === 2 ? `SKEW ${v.toFixed(1)} ≥ 160 heavy tail hedging` : tier ? `SKEW ${v.toFixed(1)} ≥ 150 tail hedging` : `SKEW ${v.toFixed(1)} normal`;
-  return stressInput("skew", title, { value: r2(v), detail: v.toFixed(1), as_of: s[s.length - 1].as_of, tier, reason });
+  const short = `SKEW ${v.toFixed(1)} ${tier === 2 ? "heavy hedging" : tier ? "hedging" : "normal"}`;
+  return stressInput("skew", title, { value: r2(v), detail: v.toFixed(1), as_of: s[s.length - 1].as_of, tier, reason, short });
 }
 
 function narrowMarket(h: Record<string, Series>, now: Date): StressInput {
   const title = "Narrow market";
   const off = fresh(h.sp500_off_high, "sp500_off_high", now);
   const br = fresh(h.sp500_above_50d_ma, "sp500_above_50d_ma", now);
-  if (!off || !br) return quiet("narrow", title, (off ? h.sp500_above_50d_ma : h.sp500_off_high), off ? "S&P 500 member breadth" : "the S&P 500 high");
+  if (!off || !br) return quiet("narrow", title, (off ? h.sp500_above_50d_ma : h.sp500_off_high), off ? "S&P breadth" : "the S&P high");
   const o = off[off.length - 1].value;
   const b = br[br.length - 1].value;
   const tier = o >= -2 && b < 55 ? 1 : 0;
@@ -271,15 +278,16 @@ function narrowMarket(h: Record<string, Series>, now: Date): StressInput {
     : o >= -2 ? `S&P near its high with ${b.toFixed(0)}% of members above the 50-day MA` : `S&P ${Math.abs(o).toFixed(1)}% below its high`;
   return stressInput("narrow", title, {
     value: r2(b), unit: "%", as_of: br[br.length - 1].as_of, tier, reason,
+    short: tier ? `Near high, only ${b.toFixed(0)}% > 50d` : o >= -2 ? `Near high, ${b.toFixed(0)}% > 50d MA` : `S&P ${Math.abs(o).toFixed(1)}% below its high`,
     detail: `${Math.abs(o).toFixed(1)}% below high · ${b.toFixed(0)}% above 50-day MA`,
   });
 }
 
-/** Driver-list text for a stress input: the rule that fired, or the reading. */
+/** Driver-list text for a stress input: one short line ("×½" when halved). */
 function stressReason(x: StressInput, halved: boolean): string {
   if (x.stale || x.missing) return x.reason;
-  if (x.tier) return x.reason + (halved ? " (halved: buy side ≥ 4.5)" : "");
-  return x.id === "rates" || x.id === "hy_widening" || x.id === "nfci" ? `${x.reason}: ${x.detail}` : x.reason;
+  const text = x.short ?? x.reason;
+  return x.tier && halved ? `${text} ×½` : text;
 }
 
 export function computeMarketRegime(
@@ -300,12 +308,12 @@ export function computeMarketRegime(
     if (isStale(o, now)) {
       // Listed at 0 points so the page shows the source has gone quiet.
       stale.push({ indicator_id: id, as_of: o.as_of });
-      contributions.push({ ...c, tier: 0, points: 0, reason: `No reading since ${o.as_of}, not scored`, stale: true });
+      contributions.push({ ...c, tier: 0, points: 0, reason: `No reading since ${o.as_of.slice(5)}`, stale: true });
       continue;
     }
     considered++;
     if (c.tier < 0 && V2_DROPPED_RISK.has(id)) {
-      contributions.push({ ...c, tier: 0, points: 0, reason: `${c.reason}; not a top signal` });
+      contributions.push({ ...c, tier: 0, points: 0, reason: `${c.reason.replace(/\s+[A-Za-z][A-Za-z -]*$/, "")}, not scored` });
     } else {
       contributions.push(c);
     }
