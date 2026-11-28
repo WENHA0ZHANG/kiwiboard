@@ -44,8 +44,10 @@ other app.
   behind a tap, so every screen starts with the numbers.
 - **Regime alerts.** Turn on notifications and kiwiboard tells you when the
   market regime moves into a new band, for example "Regime: Buy (+4.7)". You
-  choose the bands; Neutral and Caution are off by default. On iPhone and iPad,
-  notifications need iOS 16.4 or later and the home-screen app.
+  choose the bands; Neutral and Caution are off by default. You can also opt
+  in to buy-point alerts: "NVDA: buy point hit" when a setup on the shared
+  watchlist triggers during the session. On iPhone and iPad, notifications
+  need iOS 16.4 or later and the home-screen app.
 - **Your own watchlist.** Sign in with Google to keep a personal watchlist that
   follows you between phone and desktop. Add stocks by ticker or by company
   name ("apple" finds AAPL).
@@ -274,6 +276,11 @@ indicators drove each side.
 - **Regime alerts.** Sent from the Worker with Web Push. A band has to hold
   for two refreshes in a row before it's announced, and the same band isn't
   announced twice within 12 hours.
+- **Buy-point alerts.** While the US market is open, each 30-minute refresh
+  of the shared watchlist checks today's forming bar: a logged buy-stop
+  (tight pullback, 21 EMA pullback, base breakout) whose trigger has been
+  crossed, or an EP gap forming (buy near the close). Each one is sent once,
+  only to users who turned "Buy points" on (`notification_prefs.setup_alerts`).
 - **Optional accounts.** Google sign-in through Supabase. Personal watchlists
   and alert settings are stored in Supabase behind row-level security, and
   deleting your account in Settings deletes them too.
@@ -356,7 +363,9 @@ npx wrangler pages deploy ../pages --project-name <your-pages-project>
    npx wrangler secret put ADMIN_EMAILS     # who may edit the shared watchlist
    ```
 
-4. `PUSH_ENABLED = "true"` in `wrangler.toml` turns sending on.
+4. `PUSH_ENABLED = "true"` in `wrangler.toml` turns sending on. Run
+   `supabase/schema.sql` again after updates (it is idempotent); buy-point
+   alerts need its `setup_alerts` column and `setup_alert_targets()`.
 
 ### Cron Schedule
 

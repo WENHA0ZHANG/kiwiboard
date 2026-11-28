@@ -79,12 +79,15 @@ grant execute on function public.reorder_watchlist(text, text[]) to authenticate
 create table if not exists public.notification_prefs (
   user_id       uuid        primary key default auth.uid() references auth.users (id) on delete cascade,
   regime_alerts boolean     not null default true,
+  setup_alerts  boolean     not null default false,   -- buy points on the shared watchlist
   levels        text[]      not null default array['Strong Buy','Buy','Cautious Buy','Risk','Strong Risk'],
   updated_at    timestamptz not null default now(),
   constraint levels_valid check (
     levels <@ array['Strong Buy','Buy','Cautious Buy','Neutral','Caution','Risk','Strong Risk']
   )
 );
+-- Added 2026-11-28 (buy-point alerts); off until the user turns it on.
+alter table public.notification_prefs add column if not exists setup_alerts boolean not null default false;
 alter table public.notification_prefs enable row level security;
 
 drop policy if exists "prefs: read own"   on public.notification_prefs;
@@ -148,7 +151,7 @@ grant execute on function public.save_push_subscription(text, text, text, text) 
 create table if not exists public.notification_log (
   id      bigint      generated always as identity primary key,
   user_id uuid        not null references auth.users (id) on delete cascade,
-  kind    text        not null,          -- 'regime' (room for per-stock alerts later)
+  kind    text        not null,          -- 'regime', 'setup' (buy points) or 'test'
   title   text        not null,
   body    text,
   url     text,
@@ -176,6 +179,19 @@ language sql stable security definer set search_path = '' as $$
 $$;
 revoke all on function public.regime_alert_targets(text) from public, anon, authenticated;
 grant execute on function public.regime_alert_targets(text) to service_role;
+
+-- Recipients of a buy-point alert (Worker only): users who turned it on.
+-- Worker: POST /rest/v1/rpc/setup_alert_targets {} with service_role key.
+create or replace function public.setup_alert_targets()
+returns table (user_id uuid, endpoint text, p256dh text, auth text)
+language sql stable security definer set search_path = '' as $$
+  select s.user_id, s.endpoint, s.p256dh, s.auth
+  from public.push_subscriptions s
+  join public.notification_prefs p on p.user_id = s.user_id
+  where p.setup_alerts;
+$$;
+revoke all on function public.setup_alert_targets() from public, anon, authenticated;
+grant execute on function public.setup_alert_targets() to service_role;
 
 
 -- ── 6. Explicit grants (needed when "expose new tables" is off in Data API) ───

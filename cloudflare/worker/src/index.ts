@@ -35,6 +35,8 @@ import {
   getActiveSignals, gradeSignal, insertSignals, recentSignals, signalChanged, signalsFromMetrics, updateSignals,
 } from "./lib/signal-log";
 import type { SignalRow } from "./lib/signal-log";
+import { findBuyPoints, pushBuyPoints } from "./lib/setup-alerts";
+import type { BuyPointAlert } from "./lib/setup-alerts";
 import { fetchStooqDailyCloses, fetchStooqQuote } from "./lib/stooq";
 import { fetchCompanyNews, fetchGeneralNews, newsTickerForYahooSymbol } from "./lib/finnhub";
 import { DAILY_SOURCES, fetchAllProviders } from "./lib/fetchers";
@@ -563,9 +565,9 @@ function usMarketWindowOpen(now = new Date()): boolean {
 async function refreshWatchlistMetrics(
   env: Env,
   pace?: { max: number; minAgeSec: number },
-): Promise<{ wrote: number; due: number; total: number; added: number; graded: number }> {
+): Promise<{ wrote: number; due: number; total: number; added: number; graded: number; alerts: string }> {
   const wl = await getWatchlist(env.DB);
-  if (!wl.length) return { wrote: 0, due: 0, total: 0, added: 0, graded: 0 };
+  if (!wl.length) return { wrote: 0, due: 0, total: 0, added: 0, graded: 0, alerts: "none" };
   let targets = wl;
   if (pace) {
     const ages = await getWatchlistMetricAges(env.DB, wl.map((w) => w.symbol));
@@ -589,11 +591,16 @@ async function refreshWatchlistMetrics(
     }
   }
   if (out.length) await upsertWatchlistMetrics(env.DB, out);
-  let logged = { added: 0, graded: 0 };
+  let logged: { added: number; graded: number; buyPoints: BuyPointAlert[] } = { added: 0, graded: 0, buyPoints: [] };
   if (pace && scored.length) {
     try { logged = await logAndGradeSignals(env, scored, new Set(wl.map((w) => w.symbol))); } catch (e) { console.error("signal log failed", e); }
   }
-  return { wrote: out.length, due: targets.length, total: wl.length, ...logged };
+  // Buy points crossed on today's forming bar: push them to opted-in users.
+  let alerts = "none";
+  if (logged.buyPoints.length) {
+    try { alerts = await pushBuyPoints(env, logged.buyPoints); } catch (e) { alerts = "failed"; console.error("buy-point alerts failed", e); }
+  }
+  return { wrote: out.length, due: targets.length, total: wl.length, added: logged.added, graded: logged.graded, alerts };
 }
 
 // ── Signal log (Phase 3) ─────────────────────────────────────────────────────
@@ -606,9 +613,12 @@ async function logAndGradeSignals(
   env: Env,
   scored: Array<{ metrics: WatchMetrics; bars: YahooBar[]; complete: boolean }>,
   watchlist: Set<string>,
-): Promise<{ added: number; graded: number }> {
+): Promise<{ added: number; graded: number; buyPoints: BuyPointAlert[] }> {
   const bySymbol = new Map(scored.map((x) => [x.metrics.symbol, { bars: x.bars, complete: x.complete }]));
   const active = await getActiveSignals(env.DB);
+  // Read before grading: grading uses finished bars, so a trigger crossed
+  // during today's session still shows as pending here.
+  const buyPoints = findBuyPoints(scored, active);
   // Signals of symbols since removed from the watchlist: fetch their bars
   // here, a few per run, so they still reach a result.
   const orphans = [...new Set(active.map((a) => a.symbol))]
@@ -637,7 +647,7 @@ async function logAndGradeSignals(
     }
   }
   await insertSignals(env.DB, fresh);
-  return { added: fresh.length, graded: changed.length };
+  return { added: fresh.length, graded: changed.length, buyPoints };
 }
 
 // Daily sources (FRED, the two PE pages) are fetched by the */30 cron at most
@@ -1595,7 +1605,7 @@ export default {
             max: WATCHLIST_REFRESH_MAX,
             minAgeSec: open ? WATCHLIST_MIN_AGE_OPEN_SEC : WATCHLIST_MIN_AGE_CLOSED_SEC,
           });
-          console.log(`scheduled: watchlist wrote=${r.wrote}/${r.due} of ${r.total} (${open ? "market open" : "market closed"}) signals +${r.added} graded=${r.graded} (+${Date.now() - t0}ms)`);
+          console.log(`scheduled: watchlist wrote=${r.wrote}/${r.due} of ${r.total} (${open ? "market open" : "market closed"}) signals +${r.added} graded=${r.graded} buy-point alerts: ${r.alerts} (+${Date.now() - t0}ms)`);
         } catch (e) {
           console.error("scheduled: watchlist refresh failed", e);
         }

@@ -1215,7 +1215,8 @@
         border: 1px solid var(--border); border-radius: var(--radius);
       }
       .alerts-dialog .ad-bands legend { padding: 0 4px; font-size: 13px; color: var(--muted); }
-      .alerts-dialog .ad-bands label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+      .alerts-dialog .ad-bands label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+      .alerts-dialog .ad-bands.ad-one { grid-template-columns: 1fr; }
       .alerts-dialog .ad-bands input { accent-color: var(--chart); width: 16px; height: 16px; }
       .alerts-dialog .ad-status { font-size: 13px; color: var(--muted); text-align: right; }
 
@@ -6817,10 +6818,10 @@
         </div>
       </section>
       <section class="st-sec" id="st-alerts" aria-labelledby="alerts-title">
-        <h4 class="st-h" id="alerts-title">Regime alerts</h4>
-        <p class="ad-lead">Get a push notification when the Poor2Rich market regime moves into a band you pick.</p>
+        <h4 class="st-h" id="alerts-title">Alerts</h4>
+        <p class="ad-lead">Get a push notification when the Poor2Rich market regime moves into a band you pick, or when a buy point on the shared watchlist triggers.</p>
         <div id="alerts-body"></div>
-        <p class="ad-note">A new band has to hold for two checks in a row (about 30–60 min) before an alert goes out, and the same band isn't announced twice within 12 hours. Alerts are an early-warning gauge, not trading advice.</p>
+        <p class="ad-note">A new band has to hold for two checks in a row (about 30–60 min) before an alert goes out, and the same band isn't announced twice within 12 hours. Buy points are checked about every 30 minutes while the US market is open, and each one is sent once. Alerts are an early-warning gauge, not trading advice.</p>
       </section>
       <section class="st-sec" id="st-lists" aria-labelledby="st-lists-h"></section>
       <section class="st-sec" id="st-danger" aria-labelledby="st-danger-h" hidden></section>
@@ -6855,7 +6856,8 @@
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       const auth = () => window.ptAuth;
       const sb = () => auth() && auth().client;
-      let prefs = null;          // { regime_alerts, levels } of the signed-in user
+      let prefs = null;          // { regime_alerts, levels, setup_alerts } of the signed-in user
+      let setupCol = true;       // false until Supabase has notification_prefs.setup_alerts
       let statusText = "";
       let statusErr = false;
       let accountDeleted = false;
@@ -6889,15 +6891,22 @@
         if (error) throw error;
       }
       async function loadPrefs() {
-        const { data, error } = await sb().from("notification_prefs").select("regime_alerts,levels").maybeSingle();
+        let { data, error } = await sb().from("notification_prefs").select("regime_alerts,levels,setup_alerts").maybeSingle();
+        if (error && /setup_alerts/.test(error.message || "")) {
+          // The buy-point column isn't in Supabase yet: hide that switch.
+          setupCol = false;
+          ({ data, error } = await sb().from("notification_prefs").select("regime_alerts,levels").maybeSingle());
+        }
         if (error) throw error;
-        prefs = data || { regime_alerts: true, levels: DEFAULT_BANDS.slice() };
+        prefs = Object.assign({ regime_alerts: true, levels: DEFAULT_BANDS.slice(), setup_alerts: false }, data || {});
       }
       async function savePrefs() {
-        const { error } = await sb().from("notification_prefs").upsert({
+        const row = {
           user_id: auth().user.id, regime_alerts: prefs.regime_alerts, levels: prefs.levels,
           updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
+        };
+        if (setupCol) row.setup_alerts = Boolean(prefs.setup_alerts);
+        const { error } = await sb().from("notification_prefs").upsert(row, { onConflict: "user_id" });
         if (error) throw error;
       }
 
@@ -6938,13 +6947,19 @@
             <legend>Alert me when the regime becomes</legend>
             ${ALL_BANDS.map((b) => `<label><input type="checkbox" value="${esc(b)}" ${prefs.levels.includes(b) ? "checked" : ""} /> ${esc(b)}</label>`).join("")}
           </fieldset>
+          ${setupCol ? `<fieldset class="ad-bands ad-one">
+            <legend>Also alert me about</legend>
+            <label><input type="checkbox" id="ad-setups" ${prefs.setup_alerts ? "checked" : ""} /> Buy points on the shared watchlist</label>
+          </fieldset>` : ""}
           <div class="ad-row">
             <button type="button" class="ad-btn" id="ad-test" ${on ? "" : "disabled"}>Send test notification</button>
             <span class="ad-status${statusErr ? " err" : ""}" id="ad-status">${esc(statusText)}</span>
           </div>`;
         body.querySelector("#ad-toggle").onclick = on ? turnOff : turnOn;
         body.querySelector("#ad-test").onclick = sendTest;
-        body.querySelectorAll(".ad-bands input").forEach((cb) => { cb.onchange = onBandsChange; });
+        body.querySelectorAll(".ad-bands input:not(#ad-setups)").forEach((cb) => { cb.onchange = onBandsChange; });
+        const setupBox = body.querySelector("#ad-setups");
+        if (setupBox) setupBox.onchange = () => { prefs.setup_alerts = setupBox.checked; queueSave(); };
       }
 
       function turnOn() {
@@ -6989,7 +7004,10 @@
 
       let saveTimer = null;
       function onBandsChange() {
-        prefs.levels = [...body.querySelectorAll(".ad-bands input:checked")].map((i) => i.value);
+        prefs.levels = [...body.querySelectorAll(".ad-bands input:checked:not(#ad-setups)")].map((i) => i.value);
+        queueSave();
+      }
+      function queueSave() {
         clearTimeout(saveTimer);
         saveTimer = setTimeout(async () => {
           try { await savePrefs(); setStatus("Saved."); }
