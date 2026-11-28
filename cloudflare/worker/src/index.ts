@@ -123,23 +123,36 @@ const INDICATOR_SOURCE_URLS: Record<string, string> = {
   sp500_off_high:         "https://finance.yahoo.com/quote/%5EGSPC",
 };
 
+// Chart lines: the rules the regime (v2) scores today, nothing retired.
+// By default a top fires at or above `top` and a bottom at or below
+// `bottom`; `*_dir` flips that (VIX, Put/Call, HY, the regime itself).
 const INDICATOR_THRESHOLDS: Record<string, {
   top?: number; bottom?: number; top_zone?: number[];
-  // The regime chart: high is bullish, and its lines are band edges.
-  higher_is_bull?: boolean; top_label?: string; bottom_label?: string;
+  top_dir?: "above" | "below"; bottom_dir?: "above" | "below";
+  top_label?: string; bottom_label?: string;
 }> = {
   cnn_fear_greed_index:   { top: 75.0, bottom: 25.0 },
-  cnn_put_call_options:   { top: 0.55, bottom: 0.95 },
-  vix:                    { top: 14.0, bottom: 25.0 },
-  sp500_rsi:              { top: 70.0, bottom: 30.0 },
+  cnn_put_call_options:   { top: 0.55, top_dir: "below", bottom: 0.95, bottom_dir: "above" },
+  vix:                    { bottom: 25.0, bottom_dir: "above" },
+  sp500_rsi:              { bottom: 30.0 },
   sp500_pe_ratio:         { top: 31.0, bottom: 25.0 },
   nasdaq100_pe_ratio:     { top: 30.0, bottom: 26.0 },
-  nasdaq100_above_20d_ma: { top: 80.0, bottom: 20.0 },
-  us_high_yield_spread:   { top: 2.7, bottom: 4.0 },
-  cboe_skew:              { top: 155.0, bottom: 135.0 },
+  nasdaq100_above_20d_ma: { bottom: 20.0 },
+  us_high_yield_spread:   { bottom: 4.0, bottom_dir: "above" },
+  cboe_skew:              { top: 150.0, bottom: 135.0 },
   yc_10y_2y:              { top_zone: [-0.05, 0.6] },
   move_index:             { top: 110.0 },
-  market_regime:          { top: 1.5, bottom: -1.5, higher_is_bull: true, top_label: "Cautious Buy", bottom_label: "Caution" },
+  market_regime:          { top: -1.5, top_dir: "below", top_label: "Caution", bottom: 4.5, bottom_dir: "above", bottom_label: "Buy" },
+};
+
+// Stress rules whose trigger moves with the series: the level a reading
+// must reach to fire, on the same rows and steps as lib/regime.ts
+// (HY in %: +0.40 in 20 rows or +0.60 over the 60-row low).
+const DYNAMIC_TOP: Partial<Record<string, (v: number[], i: number) => number | null>> = {
+  us_high_yield_spread: (v, i) => (i < 20 ? null : Math.min(v[i - 20] + 0.40, Math.min(...v.slice(Math.max(0, i - 59), i + 1)) + 0.60)),
+  real_yield_10y:       (v, i) => (i < 20 ? null : v[i - 20] + 0.25),
+  ust_10y:              (v, i) => (i < 20 ? null : v[i - 20] + 0.40),
+  nfci:                 (v, i) => (i < 4 ? null : v[i - 4] + 0.05),
 };
 
 // ── Default market symbols ────────────────────────────────────────────────────
@@ -764,7 +777,8 @@ export default {
           unit: o?.unit === "percent" ? "%" : (o?.unit ?? null),
           source: o?.source?.replace(/ \(computed\)$/, "") ?? null,
           source_url: INDICATOR_SOURCE_URLS[id] ?? null,
-          is_top: !!x?.tier, is_bottom: false, stale: !!x?.stale,
+          // Rate shock: each yield row shows its own rule (real +0.25 / 10Y +0.40).
+          is_top: ((x?.sub ? x.sub[id] : x?.tier) ?? 0) > 0, is_bottom: false, stale: !!x?.stale,
         };
       });
       const regimeRow = regime ? [{
@@ -823,20 +837,32 @@ export default {
         return err("Unknown indicator_id", 404);
       }
 
-      const obs = await getRecentObservations(env.DB, indicatorId, days);
-      const series = obs.map((o) => {
-        let v = o.value;
-        let unit = o.unit;
-        if (indicatorId === "us_high_yield_spread" && unit === "bp") {
-          v = v / 100;
-          unit = "%";
-        } else if (unit === "percent") { unit = "%"; }
-        else if (["0-100", "index", "ratio"].includes(unit)) { unit = ""; }
-        return { date: o.as_of, value: v };
-      });
+      const dyn = DYNAMIC_TOP[indicatorId];
+      // A moving trigger also needs the rows just before the window.
+      const obs = await getRecentObservations(env.DB, indicatorId, days + (dyn ? 130 : 0));
+      const all = obs.map((o) => ({
+        date: o.as_of,
+        // D1 keeps HY in bp; the chart shows percent.
+        value: indicatorId === "us_high_yield_spread" && o.unit === "bp" ? o.value / 100 : o.value,
+      }));
+      const cutoff = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
+      const start = dyn ? Math.max(0, all.findIndex((p) => p.date >= cutoff)) : 0;
+      const series = dyn && !all.some((p) => p.date >= cutoff) ? [] : all.slice(start);
+      const raw = obs[0]?.unit ?? null;
+      const unit = indicatorId === REGIME_SERIES_ID ? "" : indicatorId === "us_high_yield_spread" || raw === "percent" ? "%"
+        : raw && ["0-100", "index", "ratio", "score"].includes(raw) ? "" : raw;
 
-      const th = INDICATOR_THRESHOLDS[indicatorId] ?? {};
-      const unit = indicatorId === REGIME_SERIES_ID ? "" : series[0] ? obs[0]?.unit : null;
+      const th: Record<string, unknown> = { ...(INDICATOR_THRESHOLDS[indicatorId] ?? {}) };
+      // The curve's top window only counts within two years of an inversion.
+      if (indicatorId === "yc_10y_2y" && !(await readRegimeSnapshot(env).catch(() => null))?.yc_recently_inverted) delete th.top_zone;
+      if (dyn && series.length) {
+        const vals = all.map((p) => p.value);
+        th.top_series = all.map((_, i) => {
+          const t = dyn(vals, i);
+          return t == null ? null : Math.round(t * 10000) / 10000;
+        }).slice(start);
+        th.top_label = "Top trigger";
+      }
       return json({ indicator_id: indicatorId, unit, series, ...th });
     }
 

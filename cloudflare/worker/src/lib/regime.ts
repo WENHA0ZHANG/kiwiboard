@@ -203,7 +203,8 @@ function rateShock(h: Record<string, Series>, now: Date): StressInput {
   const short = tier
     ? (tReal >= tNom ? `Real yield ${signed(dReal!)} in 20d` : `10Y yield ${signed(dNom!)} in 20d`)
     : `${[dReal == null ? null : `Real ${signed(dReal)}`, dNom == null ? null : `10Y ${signed(dNom)}`].filter(Boolean).join(", ")} (20d)`;
-  return stressInput("rates", title, { value: r2(Math.max(dReal ?? -9, dNom ?? -9)), unit: "pp", detail, as_of: asOf, tier, reason, short });
+  return stressInput("rates", title, { value: r2(Math.max(dReal ?? -9, dNom ?? -9)), unit: "pp", detail, as_of: asOf, tier, reason, short,
+    sub: { real_yield_10y: tReal, ust_10y: tNom } });
 }
 
 function moveStress(h: Record<string, Series>, now: Date): StressInput {

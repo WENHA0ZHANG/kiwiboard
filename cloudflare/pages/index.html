@@ -2699,8 +2699,8 @@
               place(text, chartArea.right - 6, [up, down, up - STEP, down + STEP], "right", color, 2);
             };
 
-            if (has(opts.top)) lineLabel(`${opts.topName || "Top"} ${fmt(opts.top)}`, opts.top, opts.topColor || T.bear);
-            if (has(opts.bottom)) lineLabel(`${opts.bottomName || "Bottom"} ${fmt(opts.bottom)}`, opts.bottom, opts.bottomColor || T.bull);
+            if (has(opts.top)) lineLabel(`${opts.topName || "Top"} ${fmt(opts.top)}`, opts.top, T.bear);
+            if (has(opts.bottom)) lineLabel(`${opts.bottomName || "Bottom"} ${fmt(opts.bottom)}`, opts.bottom, T.bull);
             if (Array.isArray(opts.topZone) && opts.topZone.length === 2) {
               const hi = Math.max(...opts.topZone), lo = Math.min(...opts.topZone);
               lineLabel(`Top zone ${fmt(lo)} – ${fmt(hi)}`, hi, T.bear);
@@ -3730,11 +3730,16 @@
             const unit = data.unit || "";
             const topLineValue = (data.top === null || data.top === undefined) ? null : Number(data.top);
             const bottomLineValue = (data.bottom === null || data.bottom === undefined) ? null : Number(data.bottom);
-            // Market Regime: a high score is bullish, so the colours swap and
-            // the lines are named after the bands they open.
-            const hiBull = !!data.higher_is_bull;
-            const topColor = hiBull ? T.bull : T.bear, bottomColor = hiBull ? T.bear : T.bull;
+            // Tops are red and bottoms green. By default a top fires at or
+            // above its line and a bottom at or below; VIX, Put/Call, HY and
+            // the regime run the other way on one or both (top_dir/bottom_dir).
+            const topBelow = data.top_dir === "below", bottomAbove = data.bottom_dir === "above";
             const topName = data.top_label || "Top", bottomName = data.bottom_label || "Bottom";
+            // A stress trigger that moves with the series (HY widening, rate
+            // shock, NFCI): a reading at or above it is a top.
+            const topSeries = Array.isArray(data.top_series) && data.top_series.length === series.length
+              ? data.top_series.map(x => (x === null || x === undefined) ? null : Number(x)) : null;
+            const lastTop = topSeries ? [...topSeries].reverse().find(x => x !== null && !Number.isNaN(x)) ?? null : null;
             // Optional shaded zones rendered as tinted bands instead of lines.
             // Format: [low, high]. Used by 10Y-2Y to show the post-inversion
             // re-steepening window (any value inside the band = top warning).
@@ -3764,10 +3769,11 @@
             const _zoneRange = (z) => z ? [Math.min(z[0], z[1]), Math.max(z[0], z[1])] : null;
             const _topZoneRange = _zoneRange(topZone);
             const _botZoneRange = _zoneRange(bottomZone);
-            const pointColors = values.map(v => {
+            const pointColors = values.map((v, i) => {
               if (v === null || v === undefined || Number.isNaN(v)) return T.text;
-              if (topLineValue !== null && !Number.isNaN(topLineValue) && v >= topLineValue) return topColor;
-              if (bottomLineValue !== null && !Number.isNaN(bottomLineValue) && v <= bottomLineValue) return bottomColor;
+              if (topLineValue !== null && !Number.isNaN(topLineValue) && (topBelow ? v <= topLineValue : v >= topLineValue)) return T.bear;
+              if (topSeries && topSeries[i] !== null && v >= topSeries[i]) return T.bear;
+              if (bottomLineValue !== null && !Number.isNaN(bottomLineValue) && (bottomAbove ? v >= bottomLineValue : v <= bottomLineValue)) return T.bull;
               if (_topZoneRange && v >= _topZoneRange[0] && v <= _topZoneRange[1]) return T.bear;
               if (_botZoneRange && v >= _botZoneRange[0] && v <= _botZoneRange[1]) return T.bull;
               return T.text;
@@ -3829,10 +3835,24 @@
               datasets.push({
                 label: "Top",
                 data: labels.map(() => topLineValue),
-                borderColor: topColor,
+                borderColor: T.bear,
                 borderDash: [6, 6],
                 borderWidth: 1,
                 pointRadius: 0,
+                fill: false,
+              });
+            }
+
+            if (topSeries) {
+              datasets.push({
+                label: "Top",
+                data: topSeries,
+                borderColor: T.bear,
+                borderDash: [6, 6],
+                borderWidth: 1,
+                pointRadius: 0,
+                tension: 0,
+                spanGaps: true,
                 fill: false,
               });
             }
@@ -3841,7 +3861,7 @@
               datasets.push({
                 label: "Bottom",
                 data: labels.map(() => bottomLineValue),
-                borderColor: bottomColor,
+                borderColor: T.bull,
                 borderDash: [6, 6],
                 borderWidth: 1,
                 pointRadius: 0,
@@ -3869,9 +3889,9 @@
                 plugins: {
                   legend: { display: false },
                   thresholdLabels: {
-                    top: topLineValue,
+                    top: topSeries ? lastTop : topLineValue,
                     bottom: bottomLineValue,
-                    topName, bottomName, topColor, bottomColor,
+                    topName, bottomName,
                     topZone,
                     bottomZone,
                     latest: latestValue,
@@ -3943,8 +3963,9 @@
             });
             _fadeIn(canvas.parentElement);
 
-            const topText = (!Number.isNaN(topLineValue) && topLineValue !== null)
-              ? `${topName}: ${_formatChartValue(topLineValue, unit)}`
+            const topNow = topSeries ? lastTop : topLineValue;
+            const topText = (topNow !== null && !Number.isNaN(topNow))
+              ? `${topName}: ${_formatChartValue(topNow, unit)}`
               : null;
             const bottomText = (!Number.isNaN(bottomLineValue) && bottomLineValue !== null)
               ? `${bottomName}: ${_formatChartValue(bottomLineValue, unit)}`

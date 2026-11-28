@@ -148,16 +148,19 @@ export function computeSignals(
     });
   }
 
-  // 10) 10Y-2Y Yield Curve
+  // 10) 10Y-2Y Yield Curve, as the regime scores it: the re-steepening
+  // window is a top only within two years of an inversion, and the curve
+  // has no bottom rule.
   const yc = latest["yc_10y_2y"];
   if (yc) {
     const v = yc.value;
+    const armed = regime?.yc_recently_inverted ?? false;
     out.push({
       indicator_id: "yc_10y_2y",
-      top: v >= -0.05 && v <= 0.6,
-      bottom: v >= 1.5,
+      top: armed && v >= -0.05 && v <= 0.6,
+      bottom: false,
       title: "10Y-2Y Treasury Yield Curve",
-      detail: `${v >= 0 ? "+" : ""}${v.toFixed(2)}% (re-steepening from inversion: late-cycle top window; ≥ 1.5% Fed-easing-driven bottom window)`,
+      detail: `${v >= 0 ? "+" : ""}${v.toFixed(2)}% (−0.05 to +0.6% within 2 years of an inversion: top${armed ? "" : "; no inversion in the last 2 years"})`,
     });
   }
 

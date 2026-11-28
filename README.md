@@ -174,15 +174,18 @@ US equity top and bottom since 2000.
 | **Nasdaq 100 % Above 20-Day MA** | Short-term breadth thrust / capitulation. |
 | **S&P 500 VIX** | Implied volatility / risk aversion. |
 | **CBOE SKEW** | Institutional tail-risk hedging. |
-| **10Y–2Y Treasury Yield Curve** | Late-cycle / Fed-easing detection. |
+| **10Y–2Y Treasury Yield Curve** | Late-cycle top window, armed only within two years of an inversion. |
 
 All values come from public sources (FRED, Yahoo Finance, CNN dataviz,
 multpl, WorldPERatio). Nasdaq 100 and S&P 500 breadth are computed from the
 members' daily closes after each US close. The regime's stress inputs also
 read the real and nominal 10-year yields and the NFCI (FRED) and the MOVE
 index (Yahoo). Each reading is timestamped, stored in D1, and
-drawn on the front end with its top and bottom threshold lines. A reading
-that stops updating is marked stale and left out of the score.
+drawn on the front end with the top and bottom lines the score uses today.
+Rules that track a change rather than a level (HY widening, the yield rate
+shock, NFCI) get a moving "Top trigger" line, so a reading is a top exactly
+where it crosses that line. A reading that stops updating is marked stale
+and left out of the score.
 
 ## The Poor2Rich Algorithm
 

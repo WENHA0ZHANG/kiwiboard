@@ -67,6 +67,7 @@ export interface StressInput {
   points: number;              // ≤ 0, after the bottom-guard halving
   reason: string;
   short?: string;              // one-line text for the drivers list
+  sub?: Record<string, number>; // per-series tiers (rate shock: real_yield_10y / ust_10y)
   counts: boolean;             // part of the stress count (all but "narrow")
   stale?: boolean;             // reading too old, not scored
   missing?: boolean;           // not enough history yet
