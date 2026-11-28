@@ -1,0 +1,61 @@
+name: Market scan
+
+# Phase 4 of docs/algorithm-v2-plan.md. After each US close, runs the
+# Worker's own watchlist rules (bundled from cloudflare/worker/src by
+# esbuild) on every S&P 500 and Nasdaq 100 stock, stores the candidates in
+# D1 (Watchlist page → Market Scan) and logs Special Focus names to the
+# Signal Record. See cloudflare/scan/market-scan.ts.
+#
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_ACCOUNT_ID  the Cloudflare account that owns the D1 database
+#   CLOUDFLARE_D1_TOKEN    an API token whose only permission is Account · D1 · Edit
+#
+# GitHub turns scheduled workflows off after 60 days without commits in a
+# public repository. The page then says "Scan stale"; turn it back on under
+# Actions → Market scan → Enable workflow.
+
+on:
+  schedule:
+    - cron: "40 21 * * 1-5"   # 16:40 in New York in winter, 17:40 in summer
+    - cron: "50 23 * * 1-5"   # second try: exits at once if the first run stored the scan
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Scan again even if this session's scan is stored
+        type: boolean
+        default: false
+      dry_run:
+        description: Scan and print only, write nothing to D1
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: market-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1   # v7.1.0
+        with:
+          node-version: 24
+      - name: Bundle the Worker's rules
+        run: >-
+          npx --yes esbuild@0.28.2 cloudflare/scan/market-scan.ts
+          --bundle --platform=node --format=cjs --log-level=warning
+          --outfile=cloudflare/scan/dist/market-scan.cjs
+      - name: Scan
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_TOKEN: ${{ secrets.CLOUDFLARE_D1_TOKEN }}
+          SCAN_FORCE: ${{ inputs.force }}
+          SCAN_DRY_RUN: ${{ inputs.dry_run }}
+        run: node cloudflare/scan/dist/market-scan.cjs

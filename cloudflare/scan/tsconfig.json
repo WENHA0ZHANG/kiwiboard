@@ -1,0 +1,9 @@
+{
+  // Typecheck only (esbuild bundles it): cloudflare/worker/node_modules/.bin/tsc -p cloudflare/scan
+  "extends": "../worker/tsconfig.json",
+  "compilerOptions": {
+    "typeRoots": ["../worker/node_modules"],
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["*.ts"]
+}

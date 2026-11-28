@@ -67,8 +67,13 @@ CREATE TABLE IF NOT EXISTS watchlist_metrics (
 -- graded by the cron from daily bars (worker/src/lib/signal-log.ts). R values
 -- are multiples of the entry-to-stop risk: r_plan uses the +3R / −1R / 30-day
 -- exit, r_trend the breakeven-at-+2R / close-below-21-EMA exit.
+-- `source` is 'list' (the shared watchlist, logged and graded by the Worker)
+-- or 'scan' (Special Focus names from the daily market scan, which grades its
+-- own rows). It was added on 2026-11-28; on a database created before that:
+--   ALTER TABLE signal_log ADD COLUMN source TEXT NOT NULL DEFAULT 'list';
 CREATE TABLE IF NOT EXISTS signal_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL DEFAULT 'list',   -- list | scan
   symbol TEXT NOT NULL,
   setup TEXT NOT NULL,          -- EP | TIGHT_PB | PB21 | BASE
   label TEXT NOT NULL,
@@ -92,3 +97,19 @@ CREATE TABLE IF NOT EXISTS signal_log (
 );
 CREATE INDEX IF NOT EXISTS idx_signal_log_status ON signal_log(status, symbol);
 CREATE INDEX IF NOT EXISTS idx_signal_log_signal_date ON signal_log(signal_date);
+
+-- ── Market scan (Watchlist v2, Phase 4) ──────────────────────────────────────
+-- After each US close, .github/workflows/market-scan.yml runs the Worker's
+-- watchlist rules on ~520 stocks (cloudflare/scan/market-scan.ts) and stores
+-- the names that would make the Trade Plan: one row per stock and scan date,
+-- `payload_json` holding a ScanCandidate (worker/src/lib/market-scan.ts).
+-- kv_store `market_scan:last` holds the latest scan's date and counts.
+-- Rows older than 90 days are deleted when a new scan is stored.
+CREATE TABLE IF NOT EXISTS market_scan (
+  scan_date TEXT NOT NULL,      -- the finished session scanned
+  symbol TEXT NOT NULL,
+  focus_score INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (scan_date, symbol)
+);

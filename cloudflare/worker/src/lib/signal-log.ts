@@ -13,12 +13,20 @@ import { ema, r2 } from "./indicators";
 //   trend: stop to breakeven after a close at +2R, out on a close below the
 //          21 EMA, at most 60 sessions
 // Unlike the backtest this has no survivorship bias: it is the live record.
+//
+// Two sources write here. "list": the shared watchlist, logged and graded by
+// the Worker's */30 cron. "scan": Special Focus names (score ≥ 4) from the
+// daily market scan of ~520 stocks (cloudflare/scan), which logs and grades
+// its own rows after each close. A symbol has at most one pending or open
+// signal across both.
 
 export type SignalSetup = "EP" | "TIGHT_PB" | "PB21" | "BASE";
 export type SignalStatus = "pending" | "missed" | "open" | "closed";
+export type SignalSource = "list" | "scan";
 
 export interface SignalRow {
   id?: number;
+  source: SignalSource;
   symbol: string;
   setup: SignalSetup;
   label: string;
@@ -43,10 +51,12 @@ const MIN_DOLLAR_VOL = 2e7;
 const MIN_PRICE = 10;
 
 /** New signals worth logging from a fresh metrics row (finished bars only). */
-export function signalsFromMetrics(m: WatchMetrics, bars: YahooBar[], lastBarComplete: boolean): SignalRow[] {
+export function signalsFromMetrics(
+  m: WatchMetrics, bars: YahooBar[], lastBarComplete: boolean, source: SignalSource = "list",
+): SignalRow[] {
   const out: SignalRow[] = [];
   const base = (fields: Partial<SignalRow> & Pick<SignalRow, "setup" | "label" | "signal_date" | "entry_type" | "trigger" | "stop" | "window">): SignalRow => ({
-    symbol: m.symbol, status: "pending", entry_date: null, entry: null, exit_date: null,
+    source, symbol: m.symbol, status: "pending", entry_date: null, entry: null, exit_date: null,
     r_plan: null, r_trend: null, r_now: null, max_r: null, stress: m.stress ?? null, ...fields,
   });
   for (const x of m.setups) {
@@ -168,12 +178,19 @@ export function gradeSignal(sig: SignalRow, allBars: YahooBar[], lastBarComplete
 
 // ── D1 ───────────────────────────────────────────────────────────────────────
 
-const COLS = [
-  "symbol", "setup", "label", "signal_date", "entry_type", "trigger", "stop", "window", "status",
+// Shared with the market scan, which writes the same rows through D1's HTTP API.
+export const SIGNAL_COLS = [
+  "source", "symbol", "setup", "label", "signal_date", "entry_type", "trigger", "stop", "window", "status",
   "entry_date", "entry", "exit_date", "r_plan", "r_trend", "r_now", "max_r", "stress",
 ] as const;
+/** The fields a re-grade changes. */
+export const GRADE_COLS = ["status", "entry_date", "entry", "exit_date", "r_plan", "r_trend", "r_now", "max_r"] as const;
+export const INSERT_SIGNAL_SQL =
+  `INSERT OR IGNORE INTO signal_log (${SIGNAL_COLS.join(",")}, created_at, updated_at) VALUES (${SIGNAL_COLS.map(() => "?").join(",")}, ?, ?)`;
+export const UPDATE_SIGNAL_SQL =
+  `UPDATE signal_log SET ${GRADE_COLS.map((c) => `${c} = ?`).join(", ")}, updated_at = ? WHERE id = ?`;
 
-/** Signals still waiting for a trigger or in a trade (a handful of rows). */
+/** Signals still waiting for a trigger or in a trade, from both sources (a few dozen rows). */
 export async function getActiveSignals(db: D1Database): Promise<SignalRow[]> {
   const rows = await db.prepare(
     `SELECT * FROM signal_log WHERE status IN ('pending','open')`,
@@ -184,19 +201,13 @@ export async function getActiveSignals(db: D1Database): Promise<SignalRow[]> {
 export async function insertSignals(db: D1Database, rows: SignalRow[]): Promise<void> {
   if (!rows.length) return;
   const now = new Date().toISOString();
-  await db.batch(rows.map((r) => db.prepare(
-    `INSERT OR IGNORE INTO signal_log (${COLS.join(",")}, created_at, updated_at)
-     VALUES (${COLS.map(() => "?").join(",")}, ?, ?)`,
-  ).bind(...COLS.map((k) => r[k] ?? null), now, now)));
+  await db.batch(rows.map((r) => db.prepare(INSERT_SIGNAL_SQL).bind(...SIGNAL_COLS.map((k) => r[k] ?? null), now, now)));
 }
 
 export async function updateSignals(db: D1Database, rows: SignalRow[]): Promise<void> {
   if (!rows.length) return;
   const now = new Date().toISOString();
-  await db.batch(rows.map((r) => db.prepare(
-    `UPDATE signal_log SET status = ?, entry_date = ?, entry = ?, exit_date = ?, r_plan = ?, r_trend = ?,
-       r_now = ?, max_r = ?, updated_at = ? WHERE id = ?`,
-  ).bind(r.status, r.entry_date, r.entry, r.exit_date, r.r_plan, r.r_trend, r.r_now, r.max_r, now, r.id ?? -1)));
+  await db.batch(rows.map((r) => db.prepare(UPDATE_SIGNAL_SQL).bind(...GRADE_COLS.map((k) => r[k]), now, r.id ?? -1)));
 }
 
 export async function recentSignals(db: D1Database, limit = 20): Promise<SignalRow[]> {

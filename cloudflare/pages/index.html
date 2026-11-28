@@ -1095,6 +1095,37 @@
       .sr-table .sr-r.up { color: var(--bull); font-weight: 600; }
       .sr-table .sr-r.down { color: var(--bear); font-weight: 600; }
       .sr-table .sr-r.wait { color: var(--muted); }
+      /* Signal Record rows logged by the market scan: a dot after the symbol,
+         explained by the card's subtitle ("List + ● scan"). */
+      .sr-dot {
+        display: inline-block; width: 6px; height: 6px; margin-left: 5px; vertical-align: 2px;
+        border-radius: 50%; background: var(--brand-ink);
+      }
+      #sr-meta .sr-dot { margin: 0 4px 0 0; vertical-align: 1px; }
+      /* Narrow two-column desktops: the record's side card is ~340px wide. */
+      @media (min-width: 1025px) and (max-width: 1279px) {
+        .sr-table td { font-size: 13px; }
+        .sr-table :is(th, td):not(:first-child) { padding-left: 7px; }
+        .sr-table :is(th, td):not(:last-child) { padding-right: 7px; }
+      }
+      /* Market Scan: under My Watchlist, one row per stock in the same style.
+         The watchlist's height lock leaves room for it (_wlSyncHeights). */
+      .wl-main { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+      .wl-scan-card > h2 > .meta.is-stale { color: var(--bear); }
+      .wl-scan-card table { margin-bottom: 8px; }
+      .wl-scan-card :is(td, th) { padding: 10px 12px; font-size: 14.5px; text-align: right; white-space: nowrap; }
+      .wl-scan-card th { font-size: 12.5px; }
+      .wl-scan-card :is(td, th):first-child { text-align: left; padding-left: 22px; width: 1%; }
+      /* Symbol and Setup take only the room they need; the numbers share the rest. */
+      .wl-scan-card :is(td, th):nth-child(2) { text-align: left; }
+      .wl-scan-card th:nth-child(2) { width: 1%; }
+      .wl-scan-card :is(th:last-child, td.ms-score) { padding-right: 22px; }
+      .wl-scan-card td:first-child { font-weight: 700; color: var(--text-strong); }
+      .wl-scan-card td.ms-lv { display: none; }   /* phones: buy, stop and risk on one line */
+      .wl-scan-card tr.ms-row { cursor: pointer; }
+      .wl-scan-card tr.ms-row:hover td { background: var(--surface-hover); }
+      .wl-scan-card tr.ms-row.is-muted td { color: var(--muted); }
+      .wl-scan-card td.ms-score.is-focus { color: var(--bull); font-weight: 700; }
 
       /* Regime algorithm: stress inputs under the two columns. */
       .regime-method .rm-span { grid-column: 1 / -1; }
@@ -1401,7 +1432,7 @@
         /* Overview */
         .stack-gap { margin-bottom: 14px; }
         .stack-gap-top { margin-top: 14px; }
-        .overview-grid, .grid, .grid-market, .market-tables, .wl-side { gap: 14px; }
+        .overview-grid, .grid, .grid-market, .market-tables, .wl-side, .wl-main { gap: 14px; }
         .wl-top-grid { gap: 14px; margin-bottom: 14px; }
         .wl-bottom-grid { gap: 14px; }
         .kpi-row { gap: 12px; }
@@ -1470,6 +1501,24 @@
         .wl-table-scroll :is(th, td):first-child { padding-left: 16px; padding-right: 16px; }
         .wl-table-scroll :is(th, td):nth-child(2) { padding-left: 16px; }
         .wl-table-scroll :is(th, td):last-child { padding-right: 16px; }
+        /* Market Scan: a two-line row per stock (like Key Indicators), the
+           first few rows, then "Show N more". */
+        .wl-scan-card thead { display: none; }
+        .wl-scan-card table, .wl-scan-card tbody { display: block; }
+        .wl-scan-card tr.ms-row {
+          display: grid; grid-template-columns: max-content minmax(0, 1fr) auto;
+          grid-template-areas: "sym setup score" "lv lv lv"; align-items: baseline; gap: 3px 10px;
+          padding: 11px 16px; border-top: 1px solid var(--border);
+        }
+        .wl-scan-card tr.ms-row td { padding: 0; border: 0; background: none; text-align: left; }
+        .wl-scan-card tr.ms-row td:is(:nth-child(3), :nth-child(4), :nth-child(5)) { display: none; }
+        .wl-scan-card td.ms-sym { grid-area: sym; font-size: 15px; }
+        .wl-scan-card td.ms-setup { grid-area: setup; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; color: var(--muted); }
+        .wl-scan-card tr.ms-row td.ms-score { grid-area: score; text-align: right; font-size: 13px; }
+        .wl-scan-card td.ms-score::before { content: "Score "; font-weight: 400; color: var(--muted); }
+        .wl-scan-card tr.ms-row td.ms-lv { display: flex; grid-area: lv; gap: 14px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+        .wl-scan-card td.ms-lv b { color: var(--text-strong); font-weight: 600; }
+        .wl-scan-card:not(.ms-all) tr.ms-extra { display: none; }
         /* Row tints are opaque tokens, so the pinned cell can reuse them. */
         .table-scroll.sticky-first tr:hover td:first-child,
         .stocks-table-wrap tr:hover td:first-child,
@@ -2219,8 +2268,10 @@
         </div>
       </div>
 
-      <!-- Row 2: My Watchlist (left, wider) + market timing & glossary (right) -->
+      <!-- Row 2: My Watchlist with the Market Scan under it (left, wider) +
+           trade plan, market timing, signal record & glossary (right) -->
       <div class="wl-bottom-grid">
+        <div class="wl-main">
         <div class="card wl-table-card">
           <!-- Title and Reload, then the add box (or sign-in prompt) across
                the full width, like Futures & Crypto. -->
@@ -2258,6 +2309,14 @@
             </tbody>
           </table>
           </div>
+        </div>
+
+        <!-- Setups and Special Focus bases among every S&P 500 and Nasdaq
+             100 stock, from the scan that runs after each US close. -->
+        <div class="card wl-scan-card">
+          <h2>Market Scan<span class="meta" id="ms-meta">S&amp;P 500 + Nasdaq 100</span></h2>
+          <div id="ms-body"><div class="tp-empty">Loading…</div></div>
+        </div>
         </div>
 
         <div class="wl-side">
@@ -5050,7 +5109,7 @@
           _wlSyncHeights();
         }
 
-        // ── Signal Record (shared list, graded by the Worker) ──────────────
+        // ── Signal Record (shared list + market scan, graded after each close)
         const SR_SETUP = { EP: "EP", TIGHT_PB: "Tight PB", PB21: "21 EMA PB", BASE: "Base" };
         async function loadSignalRecord() {
           const body = document.getElementById("sr-body");
@@ -5061,6 +5120,8 @@
             const data = await resp.json();
             const rows = data.rows || [];
             const rec = data.record || {};
+            const meta = document.getElementById("sr-meta");
+            if (meta) meta.innerHTML = rows.some(r => r.source === "scan") ? `List + <span class="sr-dot"></span>scan` : "Shared list";
             if (!rows.length) {
               body.innerHTML = `<div class="tp-empty">Setups on the shared list are logged here and graded after each close.</div>`;
               _wlSyncHeights();
@@ -5075,11 +5136,101 @@
               if (r.status === "closed" && r.r_plan != null) {
                 res = `<span class="sr-r ${r.r_plan > 0 ? "up" : "down"}" title="+3R plan exit ${fmtR(r.r_plan)} · 21 EMA trail ${r.r_trend == null ? "—" : fmtR(r.r_trend)}">${fmtR(r.r_plan)}</span>`;
               }
-              return `<tr><td>${_escHtml(String(r.signal_date || "").slice(5))}</td><td><b>${_escHtml(r.symbol)}</b></td><td>${_escHtml(SR_SETUP[r.setup] || r.setup)}</td><td>${res}</td></tr>`;
+              const src = r.source === "scan" ? `<span class="sr-dot" title="Special Focus from the market scan"></span>` : "";
+              return `<tr><td>${_escHtml(String(r.signal_date || "").slice(5))}</td><td><b>${_escHtml(r.symbol)}</b>${src}</td><td>${_escHtml(SR_SETUP[r.setup] || r.setup)}</td><td>${res}</td></tr>`;
             }).join("");
             body.innerHTML = summary + `<div class="table-scroll"><table class="sr-table"><thead><tr><th>Date</th><th>Symbol</th><th>Setup</th><th>Result</th></tr></thead><tbody>${tr}</tbody></table></div>`;
           } catch (e) {
             body.innerHTML = `<div class="tp-empty">Signal record unavailable.</div>`;
+          }
+          _wlSyncHeights();
+        }
+
+        // ── Market Scan (every S&P 500 + Nasdaq 100 stock) ─────────────────
+        // A GitHub Actions job runs the Worker's rules on ~520 stocks after
+        // each US close and stores the names that would make the Trade Plan
+        // (a setup, or a Special Focus base near its pivot): one row each.
+        let _msData = null;
+        let _msAll = false;
+        const MS_PHONE_FIRST = 3;   // phones: the first few rows, then "Show N more"
+        const MS_SETUP = { EP: "EP", TIGHT_PB: "Tight PB", PB21: "21 EMA PB" };
+        const MS_BASE = [["High Tight Flag", "HTF"], ["Cup & Handle", "Cup&H"], ["Cup (No Handle)", "Cup"]];
+        // Short setup names, as in the glossary; bases keep "(W)" for weekly.
+        function _msSetup(c) {
+          if (MS_SETUP[c.setup]) return MS_SETUP[c.setup];
+          let s = String(c.label || "Base").replace(/ breakout$/, "");
+          for (const [k, v] of MS_BASE) s = s.replace(k, v);
+          return s;
+        }
+        function _msDay(d) {
+          const t = Date.parse(String(d) + "T12:00:00Z");
+          return Number.isFinite(t) ? new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : String(d || "—");
+        }
+        async function loadMarketScan() {
+          try {
+            const resp = await fetch(`${window.API_BASE||""}/api/market-scan`);
+            if (!resp.ok) throw new Error(String(resp.status));
+            _msData = await resp.json();
+          } catch (e) {
+            _msData = { error: true };
+          }
+          renderMarketScan();
+        }
+        function renderMarketScan() {
+          const card = document.querySelector(".wl-scan-card");
+          const body = document.getElementById("ms-body");
+          const meta = document.getElementById("ms-meta");
+          const d = _msData;
+          if (!card || !body || !d) return;
+          const st = d.status || null;
+          if (meta) {
+            meta.textContent = st && d.stale ? "Scan stale" : st ? `${_msDay(st.scan_date)} · ${st.scanned} stocks` : "S&P 500 + Nasdaq 100";
+            meta.classList.toggle("is-stale", Boolean(st && d.stale));
+            meta.title = st ? `${st.scanned} of ${st.universe} stocks scanned after the ${st.scan_date} close` : "";
+          }
+          card.classList.toggle("ms-all", _msAll);
+          if (d.error || !Array.isArray(d.rows)) {
+            body.innerHTML = `<div class="tp-empty">Market scan unavailable.</div>`;
+          } else if (!st) {
+            body.innerHTML = `<div class="tp-empty">No scan yet. It runs after each US close.</div>`;
+          } else {
+            const stale = d.stale ? `<div class="tp-note warn">Last scan ${_escHtml(_msDay(st.scan_date))}; it hasn't run since.</div>` : "";
+            if (!d.rows.length) {
+              body.innerHTML = stale + `<div class="tp-empty">No setups or bases among ${st.scanned} stocks.</div>`;
+            } else {
+              const tr = d.rows.map((c, i) => {
+                const muted = c.stress ? " is-muted" : "";
+                const extra = i >= MS_PHONE_FIRST ? " ms-extra" : "";
+                const why = c.stress ? "Market stress 2+: this pullback doesn't score"
+                  : `${c.label}${c.entry_type === "close" ? ", bought at the close" : ""}`;
+                const focus = c.score >= 4 ? " is-focus" : "";
+                const risk = c.risk_pct != null ? Number(c.risk_pct).toFixed(1) + "%" : "—";
+                const buy = c.entry_type === "close" ? `At close <b>${_wlFmt(c.buy)}</b>` : `Buy <b>&gt; ${_wlFmt(c.buy)}</b>`;
+                return `<tr class="ms-row${muted}${extra}" data-sym="${_escHtml(c.symbol)}">
+                  <td class="ms-sym">${_escHtml(c.symbol)}</td>
+                  <td class="ms-setup" title="${_escHtml(why)}">${_escHtml(_msSetup(c))}</td>
+                  <td>${_wlFmt(c.buy)}</td>
+                  <td>${_wlFmt(c.stop)}</td>
+                  <td>${risk}</td>
+                  <td class="ms-score${focus}" title="${c.score >= 4 ? "Special Focus (4+)" : "Focus score"}">${_escHtml(String(c.score))}</td>
+                  <td class="ms-lv"><span>${buy}</span><span>Stop <b>${_wlFmt(c.stop)}</b> −${risk}</span></td>
+                </tr>`;
+              }).join("");
+              const more = d.rows.length - MS_PHONE_FIRST;
+              body.innerHTML = stale +
+                `<div class="table-scroll"><table><thead><tr><th>Symbol</th><th>Setup</th><th>Buy</th><th>Stop</th><th>Risk</th><th>Score</th></tr></thead><tbody>${tr}</tbody></table></div>` +
+                (more > 0 ? `<button type="button" class="m-more" id="ms-more" aria-expanded="${_msAll}">${_msAll ? "Show less" : `Show ${more} more`}</button>` : "");
+              body.querySelectorAll("tr.ms-row").forEach(row => row.addEventListener("click", (ev) => {
+                loadWatchlistDetail(row.dataset.sym);
+                // Phones: the chart sits far above, so bring it into view.
+                if (ev.isTrusted && _isPhone()) {
+                  const detail = document.getElementById("wl-detail-card");
+                  if (detail) detail.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+              }));
+              const btn = document.getElementById("ms-more");
+              if (btn) btn.addEventListener("click", () => { _msAll = !_msAll; renderMarketScan(); });
+            }
           }
           _wlSyncHeights();
         }
@@ -5806,9 +5957,10 @@
 
         // Keep the left cards' heights locked to their right-hand neighbours:
         //  • Today's Special Focus  ==  chart detail card height
-        //  • My Watchlist           ==  (Market Timing + glossary) column height
+        //  • My Watchlist           ==  side column height − the Market Scan under it
         // Overflowing content then scrolls inside the card.
         let _wlSyncRaf = 0;
+        const WL_TABLE_MIN_H = 360;   // My Watchlist never shrinks below this to fit the Market Scan
         function _wlSyncHeights() {
           cancelAnimationFrame(_wlSyncRaf);
           _wlSyncRaf = requestAnimationFrame(() => {
@@ -5829,7 +5981,13 @@
               focus.style.height = detail.offsetHeight + "px";
             }
             if (table && side && side.offsetHeight > 0) {
-              table.style.height = side.offsetHeight + "px";
+              // The Market Scan sits under My Watchlist: together they end
+              // level with the side column (the table scrolls if squeezed).
+              const scan = document.querySelector(".wl-scan-card");
+              const main = document.querySelector(".wl-main");
+              const gap = main ? parseFloat(getComputedStyle(main).rowGap) || 0 : 0;
+              const below = scan && scan.offsetHeight ? scan.offsetHeight + gap : 0;
+              table.style.height = Math.max(WL_TABLE_MIN_H, side.offsetHeight - below) + "px";
             }
           });
         }
@@ -6006,6 +6164,7 @@
           loadWatchlist(false);
           loadMarketTiming();
           loadSignalRecord();
+          loadMarketScan();
           loadMarketNews();
 
           // ── Background auto-refresh ───────────────────────────────────────
@@ -6027,6 +6186,7 @@
                 typeof loadWatchlist === "function" ? loadWatchlist(false) : null,
                 typeof loadMarketTiming === "function" ? loadMarketTiming() : null,
                 typeof loadSignalRecord === "function" ? loadSignalRecord() : null,
+                typeof loadMarketScan === "function" ? loadMarketScan() : null,
                 typeof loadMarketNews === "function" ? loadMarketNews() : null,
               ]);
             } catch (e) {

@@ -37,6 +37,8 @@ import {
 import type { SignalRow } from "./lib/signal-log";
 import { findBuyPoints, pushBuyPoints } from "./lib/setup-alerts";
 import type { BuyPointAlert } from "./lib/setup-alerts";
+import { lastBarComplete, nyClock } from "./lib/market-clock";
+import { getMarketScan } from "./lib/market-scan";
 import { fetchStooqDailyCloses, fetchStooqQuote } from "./lib/stooq";
 import { fetchCompanyNews, fetchGeneralNews, newsTickerForYahooSymbol } from "./lib/finnhub";
 import { DAILY_SOURCES, fetchAllProviders } from "./lib/fetchers";
@@ -398,33 +400,6 @@ async function loadWatchContext(env: Env): Promise<WatchContext> {
   return { stress: v2?.stress_count ?? null, spy6m };
 }
 
-/** New York date, weekday and minutes since midnight. */
-function nyClock(now = new Date()): { date: string; weekday: string; minutes: number } {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-      weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-    }).formatToParts(now).map((p) => [p.type, p.value]),
-  );
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    weekday: parts.weekday,
-    minutes: Number(parts.hour) * 60 + Number(parts.minute),
-  };
-}
-
-/**
- * False while the newest daily bar is today's New York session and may still
- * change: until 16:15, so the 16:00 run doesn't log a setup from a close the
- * auction hasn't settled yet.
- */
-function lastBarComplete(bars: YahooBar[], now = new Date()): boolean {
-  const last = bars[bars.length - 1];
-  if (!last) return true;
-  const ny = nyClock(now);
-  return last.date !== ny.date || ny.minutes >= 16 * 60 + 15;
-}
-
 // ── Watchlist access control ────────────────────────────────────────────────
 // The shared watchlist is what every visitor sees, so writing to it requires
 // a signed-in Supabase user whose email is in the ADMIN_EMAILS secret.
@@ -609,6 +584,8 @@ const ORPHAN_GRADES_PER_RUN = 3;
 // so it logs new setups and re-grades the open ones from the same data: no
 // extra outbound requests. A symbol with a pending or open signal logs
 // nothing new until that one is done (one trade at a time, as tested).
+// Rows from the daily market scan (source "scan") are graded by the scan
+// itself after each close; here they only block a second signal.
 async function logAndGradeSignals(
   env: Env,
   scored: Array<{ metrics: WatchMetrics; bars: YahooBar[]; complete: boolean }>,
@@ -621,7 +598,7 @@ async function logAndGradeSignals(
   const buyPoints = findBuyPoints(scored, active);
   // Signals of symbols since removed from the watchlist: fetch their bars
   // here, a few per run, so they still reach a result.
-  const orphans = [...new Set(active.map((a) => a.symbol))]
+  const orphans = [...new Set(active.filter((a) => a.source !== "scan").map((a) => a.symbol))]
     .filter((sym) => !watchlist.has(sym) && !bySymbol.has(sym)).slice(0, ORPHAN_GRADES_PER_RUN);
   await Promise.all(orphans.map(async (sym) => {
     const bars = await fetchYahooOHLCV(sym, "2y", "1d").catch(() => [] as YahooBar[]);
@@ -629,6 +606,7 @@ async function logAndGradeSignals(
   }));
   const changed: SignalRow[] = [];
   for (const sig of active) {
+    if (sig.source === "scan") continue;
     const x = bySymbol.get(sig.symbol);
     if (!x) continue;
     const next = gradeSignal(sig, x.bars, x.complete);
@@ -830,6 +808,18 @@ export default {
           avg_r_trend: avg(closed.map((r) => r.r_trend)),
         },
       });
+    }
+
+    // ── /api/market-scan ─────────────────────────────────────────────────────
+    // The latest daily scan of ~520 stocks (written to D1 by the GitHub
+    // Actions job in cloudflare/scan), with a stale flag once it falls behind.
+    if (pathname === "/api/market-scan" && request.method === "GET") {
+      try {
+        return json(await getMarketScan(env.DB));
+      } catch (e) {
+        console.error("/api/market-scan failed", e);
+        return json({ status: null, stale: true, sessions_behind: null, rows: [], error: "unavailable" });
+      }
     }
 
     // ── /api/regime ──────────────────────────────────────────────────────────
