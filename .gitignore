@@ -78,3 +78,6 @@ logs/
 *.sqlite
 ._*
 desktop.ini
+
+# Backtest downloads and results (research/backtest/README.md)
+research/backtest/work/

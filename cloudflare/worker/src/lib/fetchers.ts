@@ -7,7 +7,7 @@
  * fall back to simpler HTML/API sources that work from a Worker.
  */
 import type { Observation } from "./types";
-import { fetchYahooChart } from "./yahoo.ts";
+import { fetchYahooChart } from "./yahoo";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -455,58 +455,6 @@ export async function fetchSp500Pe(): Promise<Observation[]> {
   }];
 }
 
-// ── Nasdaq 100 % Above 20-Day MA from Barchart ($NDTW) ───────────────────────
-// Barchart's page ships the current value in an HTML-entity-escaped JSON
-// blob: &quot;dailyLastPrice&quot;:&quot;62.37&quot;
-const NDTW_URL = "https://www.barchart.com/stocks/quotes/$NDTW";
-export async function fetchNdxAbove20d(): Promise<Observation[]> {
-  const html = await fetchHtml(NDTW_URL, "https://www.barchart.com/");
-  if (!html) return [];
-  // Decode HTML entities for "&quot;" etc. — only for regex purposes.
-  const decoded = html.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
-  let m = decoded.match(/"dailyLastPrice"\s*:\s*"?([0-9]{1,3}(?:\.[0-9]+)?)"?/);
-  if (!m) {
-    // Fallback: look for any percentage in range next to "20-Day" text.
-    m = decoded.match(
-      /(?:20[-\s]?Day|Above[-\s]?20[-\s]?Day|NDTW)[\s\S]{0,400}?([0-9]{1,3}(?:\.[0-9]+)?)\s*%/i,
-    );
-  }
-  if (!m) {
-    console.error("fetchNdxAbove20d: pattern miss on Barchart page");
-    return [];
-  }
-  const value = parseFloat(m[1]);
-  if (!(value >= 0 && value <= 100)) return [];
-
-  // Barchart embeds the trading day in several JSON fields. The ISO form is
-  // the most reliable: "tradeTime":"2026-04-30T21:50:00". Fallback to the
-  // US-style "04/30/26" form.
-  let asOf = today();
-  const isoMatch = decoded.match(/"tradeTime"\s*:\s*"(\d{4}-\d{2}-\d{2})T/);
-  if (isoMatch) {
-    asOf = isoMatch[1];
-  } else {
-    const usMatch = decoded.match(/"tradeTime"\s*:\s*"(\d{2})\\?\/(\d{2})\\?\/(\d{2})"/);
-    if (usMatch) {
-      const mm = usMatch[1];
-      const dd = usMatch[2];
-      const yy = parseInt(usMatch[3], 10);
-      const fullYear = yy < 50 ? 2000 + yy : 1900 + yy;
-      asOf = `${fullYear}-${mm}-${dd}`;
-    }
-  }
-
-  return [{
-    indicator_id: "nasdaq100_above_20d_ma",
-    as_of: asOf,
-    value,
-    unit: "percent",
-    source: "Barchart.com",
-    meta_json: JSON.stringify({ url: NDTW_URL }),
-    inserted_at: today(),
-  }];
-}
-
 // ── Nasdaq 100 P/E from worldperatio.com ─────────────────────────────────────
 // Barron's is a Next.js shell (no data in SSR HTML), so use worldperatio,
 // whose page embeds:
@@ -535,15 +483,6 @@ function parseEnglishDate(s: string): string | null {
   if (!m) return null;
   const day = m[1].padStart(2, "0");
   const mon = MONTHS[m[2].toLowerCase()];
-  if (!mon) return null;
-  return `${m[3]}-${mon}-${day}`;
-}
-/** "Apr 23 2026" (month first) → "2026-04-23". */
-function parseMonthFirstDate(s: string): string | null {
-  const m = s.match(/([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})/);
-  if (!m) return null;
-  const day = m[2].padStart(2, "0");
-  const mon = MONTHS[m[1].toLowerCase()];
   if (!mon) return null;
   return `${m[3]}-${mon}-${day}`;
 }
@@ -592,57 +531,6 @@ export async function fetchNasdaq100Pe(): Promise<Observation[]> {
   }];
 }
 
-// ── AAII Bull-Bear (via YCharts, stored under bofa_bull_bear slot) ──────────
-// Page renders the latest weekly reading inline, e.g.
-//   "11.63% for Wk of Apr 23 2026"
-const AAII_URL =
-  "https://ycharts.com/indicators/us_investor_sentiment_bull_bear_spread";
-export async function fetchBofaBullBear(): Promise<Observation[]> {
-  const html = await fetchHtml(AAII_URL, "https://ycharts.com/");
-  if (!html) return [];
-
-  // Primary: "11.63% for Wk of Apr 23 2026" — combined value + date.
-  const combined = html.match(
-    /([+-]?\d+(?:\.\d+)?)%\s*for\s*Wk\s*of\s*([A-Za-z]{3,9}\s+\d{1,2}\s+\d{4})/i,
-  );
-  let value: number | null = null;
-  let asOf: string | null = null;
-  if (combined) {
-    value = parseFloat(combined[1]);
-    asOf = parseMonthFirstDate(combined[2]);   // "Apr 23 2026" → "2026-04-23"
-  }
-
-  // Fallback value: "Last Value ... 11.63%".
-  if (value === null) {
-    const m2 = html.match(
-      /Last Value[\s\S]{0,200}?>\s*([+-]?\d+(?:\.\d+)?)%/i,
-    );
-    if (m2) value = parseFloat(m2[1]);
-  }
-  if (value === null || isNaN(value)) {
-    console.error("fetchBofaBullBear: pattern miss on ycharts page");
-    return [];
-  }
-
-  // Fallback date: "Latest Period ... Apr 23 2026".
-  if (!asOf) {
-    const m3 = html.match(
-      /Latest Period[\s\S]{0,150}?>\s*([A-Za-z]{3,9}\s+\d{1,2}\s+\d{4})/i,
-    );
-    if (m3) asOf = parseMonthFirstDate(m3[1]);
-  }
-
-  return [{
-    indicator_id: "bofa_bull_bear",
-    as_of: asOf ?? today(),
-    value,
-    unit: "%",
-    source: "YCharts:AAII",
-    meta_json: JSON.stringify({ url: AAII_URL, definition: "AAII Bull% - Bear%" }),
-    inserted_at: today(),
-  }];
-}
-
 // ── Run all fetchable providers ──────────────────────────────────────────────
 export async function fetchAllProviders(env: {
   FRED_API_KEY?: string;
@@ -657,9 +545,10 @@ export async function fetchAllProviders(env: {
     ["sp500_rsi",      fetchSp500Rsi],
     ["cboe_skew",      fetchCboeSkew],
     ["sp500_pe",       fetchSp500Pe],
-    ["ndx_above_20d",  fetchNdxAbove20d],
     ["ndx_pe",         fetchNasdaq100Pe],
-    ["bofa_bull_bear", fetchBofaBullBear],
+    // Retired 2026-11-28: Barchart ($NDTW) and YCharts (AAII) stopped serving
+    // scripts. NDX breadth is now computed from Yahoo in the after-close cron
+    // (lib/breadth.ts); AAII has no replacement yet and ages out of the score.
     // FRED CSV endpoint requires no key. We pass the key anyway so a
     // future opt-in can switch back to the JSON API via fetchFredJson().
     ["hy_oas",         () => fetchHyOas(env.FRED_API_KEY)],

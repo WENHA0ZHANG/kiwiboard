@@ -1,5 +1,6 @@
 import type { Observation, MarketRegime, RegimeContribution } from "./types";
 import { ALL_INDICATOR_IDS } from "./types";
+import { isStale } from "./freshness";
 
 const WEIGHTS: Record<string, number> = {
   vix: 1.5,
@@ -143,14 +144,27 @@ function classify(score: number): [string, string] {
 export function computeMarketRegime(
   latest: Record<string, Observation>,
   ycRecentlyInverted = true,
+  now: Date = new Date(),
 ): MarketRegime {
   const contributions: RegimeContribution[] = [];
+  const stale: MarketRegime["stale"] = [];
   let considered = 0;
 
-  for (const id of Object.keys(latest)) {
+  // Only the scored indicators count: D1 also holds retired series, which
+  // used to inflate the total ("4 of 17").
+  for (const id of ALL_INDICATOR_IDS) {
+    const o = latest[id];
+    if (!o) continue;
+    const c = scoreOne(o, ycRecentlyInverted);
+    if (!c) continue;
+    if (isStale(o, now)) {
+      // Listed at 0 points so the page shows the source has gone quiet.
+      stale.push({ indicator_id: id, as_of: o.as_of });
+      contributions.push({ ...c, tier: 0, points: 0, reason: `No reading since ${o.as_of}, not scored`, stale: true });
+      continue;
+    }
     considered++;
-    const c = scoreOne(latest[id], ycRecentlyInverted);
-    if (c) contributions.push(c);
+    contributions.push(c);
   }
 
   const buy = Math.round(contributions.filter((c) => c.points > 0).reduce((s, c) => s + c.points, 0) * 100) / 100;
@@ -182,6 +196,7 @@ export function computeMarketRegime(
     contributions: sorted,
     coverage: contributions.filter((c) => c.tier !== 0).length,
     total: considered,
+    stale,
     yc_recently_inverted: ycRecentlyInverted,
   };
 }

@@ -34,6 +34,7 @@ export interface Signal {
   title: string;
   detail: string;
   meta?: Record<string, unknown> | null;
+  stale?: boolean;   // reading too old to use (see lib/freshness.ts)
 }
 
 export interface RegimeContribution {
@@ -45,6 +46,7 @@ export interface RegimeContribution {
   weight: number;
   points: number;
   reason: string;
+  stale?: boolean;   // listed for display only, scored 0
 }
 
 export interface MarketRegime {
@@ -56,7 +58,8 @@ export interface MarketRegime {
   summary: string;
   contributions: RegimeContribution[];
   coverage: number;
-  total: number;
+  total: number;                                          // indicators with fresh data
+  stale: Array<{ indicator_id: string; as_of: string }>;  // left out of the score
   yc_recently_inverted: boolean;
 }
 

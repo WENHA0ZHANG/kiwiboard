@@ -1,4 +1,5 @@
 import type { Observation, Signal } from "./types";
+import { isStale } from "./freshness";
 
 /**
  * Port of Python signals.py — computes bull/bear alert signals from the
@@ -6,6 +7,7 @@ import type { Observation, Signal } from "./types";
  */
 export function computeSignals(
   latest: Record<string, Observation>,
+  now: Date = new Date(),
 ): Signal[] {
   const out: Signal[] = [];
 
@@ -155,6 +157,17 @@ export function computeSignals(
       title: "10Y-2Y Treasury Yield Curve",
       detail: `${v >= 0 ? "+" : ""}${v.toFixed(2)}% (re-steepening from inversion: late-cycle top window; ≥ 1.5% Fed-easing-driven bottom window)`,
     });
+  }
+
+  // A reading too old to trust neither fires nor counts; the detail says why.
+  for (const s of out) {
+    const o = latest[s.indicator_id];
+    if (o && isStale(o, now)) {
+      s.top = false;
+      s.bottom = false;
+      s.stale = true;
+      s.detail = `No reading since ${o.as_of}, not used. ${s.detail}`;
+    }
   }
 
   return out;

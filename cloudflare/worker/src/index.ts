@@ -31,6 +31,7 @@ import { computeMetrics, ema } from "./lib/analysis";
 import { fetchStooqDailyCloses, fetchStooqQuote } from "./lib/stooq";
 import { fetchCompanyNews, fetchGeneralNews, newsTickerForYahooSymbol } from "./lib/finnhub";
 import { fetchAllProviders } from "./lib/fetchers";
+import { fetchNdxBreadth } from "./lib/breadth";
 import { WORLD_INDICES, getIndexMeta } from "./lib/world";
 
 // ── CORS helpers ─────────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ const INDICATOR_SOURCE_URLS: Record<string, string> = {
   sp500_pe_ratio:         "https://www.multpl.com/s-p-500-pe-ratio/table/by-month",
   nasdaq100_pe_ratio:     "https://worldperatio.com/index/nasdaq-100/",
   sp500_rsi:              "https://www.investing.com/indices/us-spx-500-technical",
-  nasdaq100_above_20d_ma: "https://www.barchart.com/stocks/quotes/$NDTW",
+  nasdaq100_above_20d_ma: "https://finance.yahoo.com/quote/%5ENDX/components/",
   vix:                    "https://edition.cnn.com/markets/fear-and-greed",
   cboe_skew:              "https://finance.yahoo.com/quote/%5ESKEW",
   yc_10y_2y:              "https://fred.stlouisfed.org/series/T10Y2Y",
@@ -424,6 +425,25 @@ async function refreshWatchlistMetrics(env: Env): Promise<number> {
   return out.length;
 }
 
+// ── After-close jobs (second cron trigger) ───────────────────────────────────
+// Must match the second entry of `crons` in wrangler.toml. Runs three times
+// after the US close (21:00 UTC in winter, 20:00 in summer) so a late or
+// failed run is retried. It has its own trigger because the */30 run already
+// makes close to the free plan's 50 outbound requests per invocation.
+const AFTER_CLOSE_CRON = "10 21,22,23 * * 1-5";
+
+async function runAfterCloseJobs(env: Env): Promise<void> {
+  const t0 = Date.now();
+  try {
+    const obs = await fetchNdxBreadth();
+    await upsertObservations(env.DB, obs);
+    const last = obs[obs.length - 1];
+    console.log(`after-close: ndx breadth wrote=${obs.length} last=${last?.as_of}:${last?.value} (+${Date.now() - t0}ms)`);
+  } catch (e) {
+    console.error("after-close: ndx breadth failed", e);
+  }
+}
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -473,6 +493,7 @@ export default {
           source_url: INDICATOR_SOURCE_URLS[id] ?? null,
           is_top: s?.top ?? false,
           is_bottom: s?.bottom ?? false,
+          stale: s?.stale ?? false,
         };
       });
 
@@ -1177,7 +1198,11 @@ export default {
   },
 
   // ── Cron Trigger ─────────────────────────────────────────────────────────
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (controller.cron === AFTER_CLOSE_CRON) {
+      ctx.waitUntil(runAfterCloseJobs(env));
+      return;
+    }
     ctx.waitUntil(
       (async () => {
         const t0 = Date.now();

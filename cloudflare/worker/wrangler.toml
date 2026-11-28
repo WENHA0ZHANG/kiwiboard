@@ -12,9 +12,11 @@ database_name = "poor-trader-db"
 database_id = "213c84ef-816a-45c3-8d17-8c55ba57fa16"
 
 # ── Cron Triggers ──────────────────────────────────────────────────────────────
-# Refresh macro indicators every 30 minutes.
+# 1) Refresh macro indicators, market rows and the watchlist every 30 minutes.
+# 2) After the US close on weekdays: compute Nasdaq 100 breadth from Yahoo.
+#    The string must match AFTER_CLOSE_CRON in src/index.ts.
 [triggers]
-crons = ["*/30 * * * *"]
+crons = ["*/30 * * * *", "10 21,22,23 * * 1-5"]
 
 # ── Environment variables (non-secret) ────────────────────────────────────────
 [vars]
